@@ -4,8 +4,32 @@
 .more-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .more-head h1 { margin: 7px 0 0; font: 600 clamp(38px, 10vw, 54px)/.88 var(--cc-font-display); letter-spacing: -.05em; }
 .more-head > div > p:last-child { max-width: 390px; margin: 11px 0 0; color: var(--cc-ink-soft); font-size: 12px; line-height: 1.5; }
-.more-head__mark { display: grid; width: 47px; height: 47px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 16px; background: #292622; box-shadow: var(--cc-shadow-sm); }
-.more-head__mark img { width: 37px; height: 37px; object-fit: contain; filter: brightness(0) invert(1); }
+.more-head__mark {
+  position: relative;
+  display: grid;
+  width: 47px;
+  height: 47px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / .08);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #34312d, #211f1c);
+  color: #f8f4ed;
+  box-shadow: 0 10px 24px rgb(45 38 32 / .16);
+}
+.more-head__mark::after {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border: 2px solid #292622;
+  border-radius: 50%;
+  background: #86a07f;
+  content: '';
+}
+.more-head__mark ion-icon { font-size: 24px; stroke-width: 24px; }
 
 .workspace-pulse { display: grid; min-height: 52px; grid-template-columns: auto 1px minmax(0, 1fr); align-items: center; gap: 13px; margin-top: 20px; border: 1px solid var(--cc-border); border-radius: 17px; background: color-mix(in srgb, var(--cc-surface) 92%, #eef1e8); padding: 10px 13px; box-shadow: var(--cc-shadow-sm); }
 .workspace-pulse > span:nth-child(2) { width: 1px; height: 25px; background: var(--cc-border); }

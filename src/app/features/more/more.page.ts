@@ -16,7 +16,10 @@ import { initials } from '../../core/utils/format';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="cc-page more-page">
-      <header class="more-head"><div><p class="cc-eyebrow">WORKSPACE</p><h1>More</h1><p>Every secondary admin tool, in one compact place.</p></div><span class="more-head__mark"><img src="assets/branding/cozycraft-logo.png" alt="" /></span></header>
+      <header class="more-head">
+        <div><p class="cc-eyebrow">WORKSPACE</p><h1>More</h1><p>Every secondary admin tool, in one compact place.</p></div>
+        <span class="more-head__mark" aria-hidden="true"><ion-icon name="apps-outline"></ion-icon></span>
+      </header>
 
       <section class="workspace-pulse" aria-label="Workspace status">
         <span class="workspace-pulse__live"><i [class.is-live]="data.realtimeStatus() === 'live'"></i><b>{{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}</b></span>
