@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { IonIcon, IonModal, IonSpinner } from '@ionic/angular/standalone';
@@ -178,6 +178,7 @@ export class ReviewsPage {
   private readonly toast = inject(CozyToastService);
   private readonly native = inject(NativePlatformService);
   private readonly route = inject(ActivatedRoute);
+  private lastFocusedReviewId = '';
 
   protected readonly starSlots = [0, 1, 2, 3, 4] as const;
   protected readonly filter = signal<ReviewFilter>('all');
@@ -220,6 +221,15 @@ export class ReviewsPage {
 
   constructor() {
     void this.data.start().catch((error: unknown) => void this.toast.show(this.errorMessage(error), 'danger'));
+    effect(() => {
+      const reviewId = this.focusedReviewId();
+      if (!reviewId || this.lastFocusedReviewId === reviewId
+        || !this.data.reviews().some((review) => review.id === reviewId)) return;
+      this.lastFocusedReviewId = reviewId;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById(`review-${reviewId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+    });
   }
 
   protected setFilter(filter: ReviewFilter) {

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { IonIcon, IonSearchbar, IonSpinner } from '@ionic/angular/standalone';
+import { ActivatedRoute } from '@angular/router';
 import { AdminDataService } from '../../core/data/admin-data.service';
 import { ActivityLog, ClientErrorEvent } from '../../core/models/admin.models';
 import { dateTime, titleCase } from '../../core/utils/format';
@@ -48,6 +49,7 @@ interface TimelineGroup {
 export class ActivityPage {
   protected readonly data = inject(AdminDataService);
   private readonly toast = inject(CozyToastService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly scopeOptions: ReadonlyArray<{ value: ActivityScope; label: string; icon: string }> = [
     { value: 'all', label: 'All', icon: 'layers-outline' },
@@ -148,6 +150,10 @@ export class ActivityPage {
   })[this.range()]);
 
   constructor() {
+    const requestedScope = this.route.snapshot.queryParamMap.get('scope');
+    if (this.scopeOptions.some((option) => option.value === requestedScope)) {
+      this.scope.set(requestedScope as ActivityScope);
+    }
     void this.data.start().catch((error: unknown) => void this.toast.show(this.errorMessage(error), 'danger'));
   }
 

@@ -7,6 +7,7 @@ import { AdminNotification } from '../../core/models/admin.models';
 import { NativePlatformService } from '../../core/native/native-platform.service';
 import { timeAgo } from '../../core/utils/format';
 import { canAccessRoute } from '../../core/utils/admin-permissions';
+import { adminNotificationDestination } from '../../core/utils/notification-destination';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
 import { SkeletonListComponent } from '../../shared/components/skeleton-list.component';
 import { CozyToastService } from '../../shared/components/toast.service';
@@ -383,21 +384,7 @@ export class NotificationsPage {
   }
 
   private mobileDestination(notification: AdminNotification) {
-    const entityId = notification.entity_id ? encodeURIComponent(notification.entity_id) : '';
-    const destination = (() => { switch (notification.kind) {
-      case 'order':
-        return entityId ? `/app/orders/${entityId}` : '/app/orders';
-      case 'review':
-        return entityId ? `/app/reviews?review=${entityId}` : '/app/reviews';
-      case 'support':
-        return entityId ? `/app/support/${entityId}` : '/app/support';
-      case 'inventory':
-        return entityId ? `/app/products/${entityId}` : '/app/inventory';
-      case 'report':
-        return '/app/reports';
-      case 'system':
-        return '/app/activity';
-    } })();
+    const destination = adminNotificationDestination(notification);
     return canAccessRoute(this.auth.role(), destination) ? destination : '/app/more';
   }
 

@@ -1,5 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
@@ -12,6 +12,8 @@ import { AdminAuthService } from '../auth/admin-auth.service';
 import { AppLockService } from '../auth/app-lock.service';
 import { AdminNotification } from '../models/admin.models';
 import { canAccessRoute } from '../utils/admin-permissions';
+import { adminNotificationDestination } from '../utils/notification-destination';
+import type { NotificationDestinationInput } from '../utils/notification-destination';
 import { environment } from '../../../environments/environment.generated';
 
 export type NativePushPhase =
@@ -73,6 +75,8 @@ export class NativePlatformService {
   private resumeValidation: Promise<void> | null = null;
   private inactiveAt: number | null = null;
   private backgroundLockTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingPushRoute: string | null = null;
+  private pendingPushNotificationId: number | null = null;
 
   constructor(
     private readonly connection: SupabaseAdminService,
@@ -83,6 +87,11 @@ export class NativePlatformService {
     this.auth.registerSessionEndHook(() => this.unregisterPushNotifications().then(() => undefined));
     window.addEventListener('online', () => this.online.set(true));
     window.addEventListener('offline', () => this.online.set(false));
+    this.router.events.subscribe((event) => {
+      if (!(event instanceof NavigationEnd) || !this.pendingPushRoute) return;
+      if (event.urlAfterRedirects !== this.pendingPushRoute) return;
+      this.completePendingPushOpen();
+    });
   }
 
   async initialize() {
@@ -397,7 +406,7 @@ export class NativePlatformService {
   }
 
   async presentLocalAdminNotification(notification: Pick<AdminNotification,
-    'id' | 'kind' | 'title' | 'message' | 'entity_id' | 'route'>) {
+    'id' | 'kind' | 'title' | 'message' | 'entity_type' | 'entity_id' | 'route'>) {
     if (!this.native() || this.platform() !== 'ios' || environment.iosPushConfigured) return;
     if (!this.auth.signedIn() || !this.auth.userId() || this.iosLocalAlertOwner !== this.auth.userId()) return;
     if (this.presentedLocalAlertIds.has(notification.id)) return;
@@ -422,8 +431,10 @@ export class NativePlatformService {
       extra: {
         notification_id: String(notification.id),
         kind: notification.kind,
+        entity_type: notification.entity_type,
         entity_id: notification.entity_id ?? '',
         route: notification.route || '/app/notifications',
+        destination: adminNotificationDestination(notification),
       },
     }] }).catch(() => {
       this.presentedLocalAlertIds.delete(notification.id);
@@ -549,35 +560,52 @@ export class NativePlatformService {
     return removalError ? `The device token was disabled locally, but server cleanup will retry automatically: ${removalError}` : null;
   }
 
-  private notificationDestination(data: Record<string, unknown> | undefined) {
-    if (!data) return null;
-    const id = typeof data['entity_id'] === 'string' ? encodeURIComponent(data['entity_id']) : '';
-    const entityDestination = (() => { switch (data['kind']) {
-      case 'order': return id ? `/app/orders/${id}` : '/app/orders';
-      case 'review': return id ? `/app/reviews?review=${id}` : '/app/reviews';
-      case 'support': return id ? `/app/support/${id}` : '/app/support';
-      case 'inventory': return id ? `/app/products/${id}` : '/app/inventory';
-      case 'report': return '/app/reports';
-      case 'system': return '/app/activity';
-      default: return '';
-    } })();
-    const explicit = typeof data['route'] === 'string' ? data['route'].replace(/^\/admin(?=\/|$)/, '/app') : '';
-    const safeExplicit = /^\/app\/(dashboard|orders|products|categories|inventory|payments|customers|reviews|support|reports|activity|notifications|team|settings|more)(?:[/?#]|$)/.test(explicit)
-      ? explicit
-      : '';
-    return entityDestination || safeExplicit || '/app/notifications';
-  }
-
   private async openPushDestination(data: Record<string, unknown> | undefined) {
     await this.auth.ensureInitialized();
-    const intendedRoute = this.notificationDestination(data) ?? '/app/notifications';
+    const intendedRoute = adminNotificationDestination((data ?? {}) as NotificationDestinationInput);
+    const notificationId = Number(data?.['notification_id']);
+    this.pendingPushRoute = intendedRoute;
+    this.pendingPushNotificationId = Number.isSafeInteger(notificationId) && notificationId > 0
+      ? notificationId
+      : null;
     if (!this.auth.signedIn()) {
       // Preserve the syntactically validated destination until the user's role
       // is known. Login applies the role-aware return URL sanitizer.
       await this.router.navigate(['/auth/login'], { queryParams: { returnUrl: intendedRoute } });
       return;
     }
-    await this.router.navigateByUrl(canAccessRoute(this.auth.role(), intendedRoute) ? intendedRoute : '/app/more');
+    const destination = canAccessRoute(this.auth.role(), intendedRoute) ? intendedRoute : '/app/more';
+    if (destination === '/app/more') {
+      const openedNotificationId = this.pendingPushNotificationId;
+      this.pendingPushRoute = null;
+      this.pendingPushNotificationId = null;
+      if (openedNotificationId !== null) void this.markOpenedNotificationRead(openedNotificationId);
+    }
+    await this.router.navigateByUrl(destination);
+    if (this.router.url === destination) this.completePendingPushOpen();
+  }
+
+  private async markOpenedNotificationRead(notificationId: number) {
+    const userId = this.auth.userId();
+    if (!userId) return;
+    try {
+      await this.connection.client.from('admin_notification_reads').upsert({
+        notification_id: notificationId,
+        user_id: userId,
+        read_at: new Date().toISOString(),
+        dismissed_at: null,
+      }, { onConflict: 'notification_id,user_id' });
+    } catch {
+      // Opening the requested record remains the primary action. Realtime or a
+      // later notification-center refresh can retry the non-critical read mark.
+    }
+  }
+
+  private completePendingPushOpen() {
+    const notificationId = this.pendingPushNotificationId;
+    this.pendingPushRoute = null;
+    this.pendingPushNotificationId = null;
+    if (notificationId !== null) void this.markOpenedNotificationRead(notificationId);
   }
 
   private revalidateOnResume(): Promise<void> {
@@ -642,7 +670,8 @@ export class NativePlatformService {
     if (refreshPinStatus) this.lastPinStatusRefreshAt = now;
     if (this.appLock.unlocked()) return;
 
-    const currentRoute = this.router.url.startsWith('/app/') ? this.router.url : '/app/dashboard';
+    const currentRoute = this.pendingPushRoute
+      ?? (this.router.url.startsWith('/app/') ? this.router.url : '/app/dashboard');
     const destination = this.appLock.needsSetup() ? '/auth/pin-setup' : '/auth/unlock';
     if (!this.router.url.startsWith(destination)) {
       await this.router.navigate([destination], { queryParams: { returnUrl: currentRoute }, replaceUrl: true });

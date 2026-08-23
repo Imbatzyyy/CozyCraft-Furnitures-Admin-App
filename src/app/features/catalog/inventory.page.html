@@ -44,7 +44,12 @@
       } @else {
         <div class="stock-list">
           @for (product of visibleProducts(); track product.id) {
-            <article class="stock-card" [attr.data-state]="stockState(product)">
+            <article
+              class="stock-card"
+              [class.stock-card--focused]="focusedProductId() === product.id"
+              [attr.id]="'inventory-product-' + product.id"
+              [attr.data-state]="stockState(product)"
+            >
               <a class="stock-card__product" [routerLink]="['/app/products', product.id]">
                 <span class="stock-card__image">
                   @if (primaryImage(product)) { <img ccImgFallback [src]="primaryImage(product)" [alt]="product.name" /> }

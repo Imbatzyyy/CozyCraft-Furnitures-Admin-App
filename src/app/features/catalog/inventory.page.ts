@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   IonIcon,
   IonSearchbar,
@@ -47,6 +47,8 @@ export class InventoryPage {
   private readonly data = inject(AdminDataService);
   private readonly actions = inject(CatalogActionsService);
   private readonly toast = inject(CozyToastService);
+  private readonly route = inject(ActivatedRoute);
+  private lastFocusedProductId = '';
 
   readonly products = this.data.products;
   readonly movements = this.data.inventoryMovements;
@@ -59,6 +61,7 @@ export class InventoryPage {
   readonly adjustment = signal<PendingInventoryAdjustment | null>(null);
   readonly adjustmentUnits = signal('1');
   readonly adjustmentReason = signal('');
+  readonly focusedProductId = signal(this.route.snapshot.queryParamMap.get('product') ?? '');
 
   readonly threshold = computed(() => this.data.settings().low_stock_threshold);
   readonly lowStock = computed(() => this.products().filter((product) => product.stock_quantity <= this.threshold()));
@@ -103,6 +106,18 @@ export class InventoryPage {
 
   constructor() {
     void this.data.start();
+    effect(() => {
+      const productId = this.focusedProductId();
+      if (!productId || this.lastFocusedProductId === productId
+        || !this.products().some((product) => product.id === productId)) return;
+      this.lastFocusedProductId = productId;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById(`inventory-product-${productId}`)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }));
+    });
   }
 
   readonly dateTime = dateTime;

@@ -755,6 +755,7 @@ export class AdminDataService {
               kind: notification.kind as AdminNotification['kind'],
               title: notification.title,
               message: notification.message,
+              entity_type: typeof notification.entity_type === 'string' ? notification.entity_type : '',
               entity_id: typeof notification.entity_id === 'string' ? notification.entity_id : null,
               route: typeof notification.route === 'string' ? notification.route : '/app/notifications',
             });
