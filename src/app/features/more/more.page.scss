@@ -38,9 +38,12 @@
 .device-card b { display: block; overflow: hidden; margin-top: 4px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .device-card p { margin: 3px 0 0; color: var(--cc-ink-soft); font-size: 10px; line-height: 1.35; }
 .device-card button { min-width: 64px; min-height: 40px; border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cc-canvas); color: var(--cc-ink); padding: 0 9px; font-size: 10px; font-weight: 780; }
+.device-card button:disabled { cursor: default; opacity: .48; }
 .device-card ion-spinner { width: 15px; height: 15px; }
 .device-security { border-color: rgb(106 130 99 / .24); background: linear-gradient(145deg, #fbfcf8, #f2f5ee); }
 .device-security > span:first-child { background: #e4ebdf; color: #60775a; }
+.device-alerts:has(i.is-on) { border-color: rgb(106 130 99 / .24); background: linear-gradient(145deg, #fbfcf8, #f2f5ee); }
+.device-alerts:has(i.is-on) > span:first-child { background: #e4ebdf; color: #60775a; }
 
 .account-card { display: grid; grid-template-columns: 43px minmax(0, 1fr) 42px; align-items: center; gap: 11px; margin-top: 24px; border-radius: 20px; background: #292622; padding: 13px; color: #f8f4ed; box-shadow: 0 12px 28px rgb(45 39 34 / .16); }
 .account-avatar { display: grid; width: 43px; height: 43px; place-items: center; border-radius: 14px; background: var(--cc-accent); color: #292622; font-size: 11px; font-weight: 850; }

@@ -12,9 +12,29 @@ import { AppLockService } from '../auth/app-lock.service';
 import { canAccessRoute } from '../utils/admin-permissions';
 import { environment } from '../../../environments/environment.generated';
 
+export type NativePushPhase =
+  | 'checking'
+  | 'unavailable'
+  | 'setup-required'
+  | 'ready'
+  | 'denied'
+  | 'registering'
+  | 'registered'
+  | 'error';
+
+export interface NativePushRegistration {
+  phase: NativePushPhase;
+  title: string;
+  detail: string;
+  action: string;
+  canRegister: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class NativePlatformService {
   private static readonly BACKGROUND_UNLOCK_GRACE_MS = 15_000;
+  private static readonly PUSH_REGISTRATION_TIMEOUT_MS = 25_000;
+  private static readonly ANDROID_PUSH_CHANNEL = 'cozycraft_operations';
   readonly native = signal(Capacitor.isNativePlatform());
   readonly platform = signal(Capacitor.getPlatform());
   readonly online = signal(navigator.onLine);
@@ -23,8 +43,22 @@ export class NativePlatformService {
   private pushOwner = localStorage.getItem('cozycraft-admin-push-owner') ?? '';
   private pendingPushRevocations = this.readPendingRevocations();
   private readonly pushRegistrationValid = signal(Boolean(this.pushToken));
-  readonly pushEnabled = computed(() => this.pushRegistrationValid() && Boolean(this.pushToken) && this.pushOwner === this.auth.userId());
-  private pushListenersReady = false;
+  private readonly pushRegistrationState = signal<NativePushRegistration>({
+    phase: 'checking',
+    title: 'Checking alerts',
+    detail: 'Confirming this device can receive native notifications.',
+    action: 'Wait',
+    canRegister: false,
+  });
+  readonly pushRegistration = this.pushRegistrationState.asReadonly();
+  readonly pushEnabled = computed(() => this.pushRegistrationState().phase === 'registered'
+    && this.pushRegistrationValid() && Boolean(this.pushToken) && this.pushOwner === this.auth.userId());
+  private pushListenersSetup: Promise<void> | null = null;
+  private pushRegistrationAttempt: Promise<string | null> | null = null;
+  private pendingNativeRegistration: {
+    settle: (message: string | null) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   private lastAccessValidationAt = 0;
   private lastPinStatusRefreshAt = 0;
   private resumeValidation: Promise<void> | null = null;
@@ -45,7 +79,10 @@ export class NativePlatformService {
   async initialize() {
     await this.auth.ensureInitialized();
     await this.retryPendingPushRevocations();
-    if (!this.native()) return;
+    if (!this.native()) {
+      this.setPushState('unavailable');
+      return;
+    }
     if (this.platform() === 'ios') {
       // The PIN screen uses its own compact controls, so the iOS previous /
       // next accessory strip adds no value. More importantly, leaving that
@@ -80,7 +117,11 @@ export class NativePlatformService {
       }
       void this.revalidateOnResume();
     });
-    await this.configurePushListeners();
+    await this.configurePushListeners().catch((error: unknown) => {
+      this.setPushState('error', this.errorMessage(error, 'Native notification listeners could not be prepared.'));
+    });
+    await this.prepareAndroidPushChannel();
+    await this.refreshPushRegistrationState(true);
   }
 
   async success() {
@@ -127,45 +168,211 @@ export class NativePlatformService {
   }
 
   async registerPushNotifications(): Promise<string | null> {
-    if (!this.native()) return 'Push notifications are available in installed Android and iOS builds.';
-    if (this.platform() === 'android' && !environment.androidPushConfigured) {
-      return 'Android push delivery is not configured yet. Add android/app/google-services.json, then rebuild the app.';
+    if (this.pushRegistrationAttempt) return this.pushRegistrationAttempt;
+    const attempt = this.performPushRegistration();
+    this.pushRegistrationAttempt = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (this.pushRegistrationAttempt === attempt) this.pushRegistrationAttempt = null;
     }
-    const current = await PushNotifications.checkPermissions();
-    const permission = current.receive === 'prompt'
-      ? await PushNotifications.requestPermissions()
-      : current;
-    if (permission.receive !== 'granted') return 'Notification permission was not granted.';
+  }
 
-    await this.configurePushListeners();
-    await this.retryPendingPushRevocations();
-    await PushNotifications.register();
-    return null;
+  async refreshPushRegistrationState(validateServer = false) {
+    if (!this.native()) {
+      this.setPushState('unavailable');
+      return;
+    }
+    if (this.platform() === 'android' && !environment.androidPushConfigured) {
+      this.setPushState('setup-required');
+      return;
+    }
+
+    try {
+      const permission = await PushNotifications.checkPermissions();
+      if (permission.receive === 'denied') {
+        this.setPushState('denied');
+        return;
+      }
+
+      const ownsStoredToken = Boolean(this.pushToken)
+        && this.pushOwner === this.auth.userId()
+        && this.pushRegistrationValid();
+      if (ownsStoredToken && validateServer && this.auth.userId()) {
+        const { data, error } = await this.connection.client
+          .from('mobile_push_tokens')
+          .select('active')
+          .eq('user_id', this.auth.userId()!)
+          .eq('token', this.pushToken)
+          .maybeSingle();
+        if (error) {
+          this.setPushState('error', `Native alert registration could not be verified: ${error.message}`);
+          return;
+        }
+        if (!data?.active) this.clearCurrentPushRegistration();
+      }
+
+      if (Boolean(this.pushToken) && this.pushOwner === this.auth.userId() && this.pushRegistrationValid()) {
+        this.setPushState('registered');
+        return;
+      }
+      this.setPushState('ready', permission.receive === 'granted'
+        ? 'Permission is ready. Register this device for operational alerts.'
+        : 'Register to allow time-sensitive operational alerts on this device.');
+    } catch (error: unknown) {
+      this.setPushState('error', this.errorMessage(error, 'Notification permission could not be checked.'));
+    }
+  }
+
+  private async performPushRegistration(): Promise<string | null> {
+    if (!this.native()) {
+      const message = 'Native alerts are available only in the installed Android and iOS applications.';
+      this.setPushState('unavailable', message);
+      return message;
+    }
+    if (!this.auth.signedIn()) {
+      const message = 'Sign in to an approved administrator account before registering native alerts.';
+      this.setPushState('error', message);
+      return message;
+    }
+    if (this.platform() === 'android' && !environment.androidPushConfigured) {
+      const message = 'Android alerts need the project-specific android/app/google-services.json file before this device can register.';
+      this.setPushState('setup-required', message);
+      return message;
+    }
+
+    this.setPushState('registering');
+    try {
+      const current = await PushNotifications.checkPermissions();
+      const permission = current.receive === 'granted'
+        ? current
+        : await PushNotifications.requestPermissions();
+      if (permission.receive !== 'granted') {
+        const message = this.platform() === 'ios'
+          ? 'Notifications are disabled. Enable CozyCraft Admin in iPhone Settings › Notifications, then tap Retry.'
+          : 'Notifications are disabled. Enable CozyCraft Admin notifications in Android Settings, then tap Retry.';
+        this.setPushState('denied', message);
+        return message;
+      }
+
+      await this.configurePushListeners();
+      await this.retryPendingPushRevocations();
+      await this.prepareAndroidPushChannel();
+
+      return await this.waitForNativePushToken();
+    } catch (error: unknown) {
+      const message = this.nativeRegistrationError(this.errorMessage(error, 'Native alert registration failed.'));
+      this.pushRegistrationValid.set(false);
+      this.setPushState('error', message);
+      this.settleNativeRegistration(message);
+      return message;
+    }
+  }
+
+  private async waitForNativePushToken(): Promise<string | null> {
+    if (this.pendingNativeRegistration) {
+      return 'A native alert registration is already in progress.';
+    }
+    const result = new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => {
+        if (!this.pendingNativeRegistration) return;
+        this.pendingNativeRegistration = null;
+        const message = 'The device did not return a notification token in time. Check the native push capability and try again.';
+        this.pushRegistrationValid.set(false);
+        this.setPushState('error', message);
+        resolve(message);
+      }, NativePlatformService.PUSH_REGISTRATION_TIMEOUT_MS);
+      this.pendingNativeRegistration = { settle: resolve, timer };
+    });
+    try {
+      await PushNotifications.register();
+    } catch (error: unknown) {
+      const message = this.nativeRegistrationError(this.errorMessage(error, 'The operating system rejected push registration.'));
+      this.pushRegistrationValid.set(false);
+      this.setPushState('error', message);
+      this.settleNativeRegistration(message);
+    }
+    return result;
+  }
+
+  private settleNativeRegistration(message: string | null) {
+    const pending = this.pendingNativeRegistration;
+    if (!pending) return;
+    this.pendingNativeRegistration = null;
+    clearTimeout(pending.timer);
+    pending.settle(message);
+  }
+
+  private async prepareAndroidPushChannel() {
+    if (this.platform() !== 'android' || !environment.androidPushConfigured) return;
+    await PushNotifications.createChannel({
+      id: NativePlatformService.ANDROID_PUSH_CHANNEL,
+      name: 'CozyCraft operations',
+      description: 'Orders, inventory, reviews, customer care, and security alerts.',
+      importance: 4,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: '#B8A58D',
+    }).catch(() => undefined);
   }
 
   private async configurePushListeners() {
-    if (!this.native() || this.pushListenersReady) return;
-    this.pushListenersReady = true;
-    await PushNotifications.addListener('registration', (token: Token) => void this.savePushToken(token.value));
-    await PushNotifications.addListener('registrationError', () => this.pushRegistrationValid.set(false));
-    await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
-      void this.openPushDestination(notification.data);
-    });
+    if (!this.native()) return;
+    if (!this.pushListenersSetup) {
+      this.pushListenersSetup = (async () => {
+        await PushNotifications.addListener('registration', (token: Token) => void this.savePushToken(token.value));
+        await PushNotifications.addListener('registrationError', ({ error }) => {
+          this.pushRegistrationValid.set(false);
+          const message = this.nativeRegistrationError(error);
+          this.setPushState('error', message);
+          this.settleNativeRegistration(message);
+        });
+        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          window.dispatchEvent(new CustomEvent('cozycraft:native-push-received', { detail: notification }));
+        });
+        await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
+          void this.openPushDestination(notification.data);
+        });
+      })().catch((error: unknown) => {
+        this.pushListenersSetup = null;
+        throw error;
+      });
+    }
+    await this.pushListenersSetup;
   }
 
   private async savePushToken(token: string) {
-    if (!token) return;
+    if (!token) {
+      const message = 'The operating system returned an empty notification token. Please try again.';
+      this.setPushState('error', message);
+      this.settleNativeRegistration(message);
+      return;
+    }
+    if (!this.auth.signedIn() || !this.auth.userId()) {
+      const message = 'Sign in to an approved administrator account before registering native alerts.';
+      this.setPushState('error', message);
+      this.settleNativeRegistration(message);
+      return;
+    }
     const { error } = await this.connection.client.rpc('register_mobile_push_token', {
       p_token: token,
       p_platform: this.platform(),
     });
-    if (!error) {
-      this.pushToken = token;
-      localStorage.setItem('cozycraft-admin-push-token', token);
-      this.pushOwner = this.auth.userId() ?? '';
-      localStorage.setItem('cozycraft-admin-push-owner', this.pushOwner);
-      this.pushRegistrationValid.set(true);
+    if (error) {
+      const message = `This device received a native token, but CozyCraft could not save it: ${error.message}`;
+      this.pushRegistrationValid.set(false);
+      this.setPushState('error', message);
+      this.settleNativeRegistration(message);
+      return;
     }
+    this.pushToken = token;
+    localStorage.setItem('cozycraft-admin-push-token', token);
+    this.pushOwner = this.auth.userId() ?? '';
+    localStorage.setItem('cozycraft-admin-push-owner', this.pushOwner);
+    this.pushRegistrationValid.set(true);
+    this.setPushState('registered');
+    this.settleNativeRegistration(null);
   }
 
   async unregisterPushNotifications(): Promise<string | null> {
@@ -182,8 +389,12 @@ export class NativePlatformService {
     // Capacitor's Android plugin calls Firebase directly. A local build without
     // google-services.json must not invoke it merely to clear an empty token;
     // the native exception is fatal before JavaScript can catch it.
-    if (this.native() && token) await PushNotifications.unregister().catch(() => undefined);
+    if (this.native() && token && (this.platform() !== 'android' || environment.androidPushConfigured)) {
+      await PushNotifications.unregister().catch(() => undefined);
+    }
     this.clearCurrentPushRegistration();
+    this.settleNativeRegistration('Native alert registration was cancelled.');
+    await this.refreshPushRegistrationState(false);
     return removalError ? `The device token was disabled locally, but server cleanup will retry automatically: ${removalError}` : null;
   }
 
@@ -271,6 +482,7 @@ export class NativePlatformService {
       if (!this.router.url.startsWith('/auth/login')) await this.router.navigateByUrl('/auth/login', { replaceUrl: true });
       return;
     }
+    await this.refreshPushRegistrationState(false);
     if (this.auth.mfaRequired() && !this.auth.mfaSatisfied()) return;
     if (this.appLock.biometricBusy()) return;
 
@@ -284,6 +496,98 @@ export class NativePlatformService {
     if (!this.router.url.startsWith(destination)) {
       await this.router.navigate([destination], { queryParams: { returnUrl: currentRoute }, replaceUrl: true });
     }
+  }
+
+  private setPushState(phase: NativePushPhase, detail?: string) {
+    const platformName = this.platform() === 'ios' ? 'iPhone' : this.platform() === 'android' ? 'Android device' : 'device';
+    const state: NativePushRegistration = (() => {
+      switch (phase) {
+        case 'unavailable':
+          return {
+            phase,
+            title: 'Installed app required',
+            detail: detail ?? 'Native alerts are available in the installed Android and iOS applications.',
+            action: 'Unavailable',
+            canRegister: false,
+          };
+        case 'setup-required':
+          return {
+            phase,
+            title: 'Push setup required',
+            detail: detail ?? 'This Android build is missing its Firebase device configuration.',
+            action: 'Setup needed',
+            canRegister: false,
+          };
+        case 'ready':
+          return {
+            phase,
+            title: 'Native alerts available',
+            detail: detail ?? `Register this ${platformName} for operational notifications.`,
+            action: 'Register',
+            canRegister: true,
+          };
+        case 'denied':
+          return {
+            phase,
+            title: 'Permission is off',
+            detail: detail ?? `Enable CozyCraft Admin notifications in ${platformName} Settings, then retry.`,
+            action: 'Retry',
+            canRegister: true,
+          };
+        case 'registering':
+          return {
+            phase,
+            title: 'Registering device',
+            detail: `Waiting for a protected notification token from this ${platformName}.`,
+            action: 'Registering',
+            canRegister: false,
+          };
+        case 'registered':
+          return {
+            phase,
+            title: 'Native alerts active',
+            detail: `Operational notifications are registered to this ${platformName}.`,
+            action: 'Remove',
+            canRegister: true,
+          };
+        case 'error':
+          return {
+            phase,
+            title: 'Registration needs attention',
+            detail: detail ?? 'Native alert registration did not complete. Please try again.',
+            action: 'Retry',
+            canRegister: true,
+          };
+        default:
+          return {
+            phase: 'checking',
+            title: 'Checking alerts',
+            detail: detail ?? 'Confirming this device can receive native notifications.',
+            action: 'Wait',
+            canRegister: false,
+          };
+      }
+    })();
+    this.pushRegistrationState.set(state);
+  }
+
+  private nativeRegistrationError(error: string) {
+    if (/aps-environment|entitlement|provisioning profile/i.test(error)) {
+      return 'This iPhone build is not signed with the Push Notifications capability. Enable it for com.cozycraft.admin in Xcode and Apple Developer, then rebuild.';
+    }
+    if (/firebase|google-services|default firebaseapp/i.test(error)) {
+      return 'This Android build is missing its matching Firebase configuration. Add android/app/google-services.json and rebuild.';
+    }
+    return error;
+  }
+
+  private errorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.trim()) {
+      return error.message;
+    }
+    return fallback;
   }
 
   private clearCurrentPushRegistration() {

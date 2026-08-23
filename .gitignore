@@ -20,3 +20,5 @@
 *.p12
 *.p8
 *.log
+/android/app/google-services.json
+/ios/App/App/GoogleService-Info.plist

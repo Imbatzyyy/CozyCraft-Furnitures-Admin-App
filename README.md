@@ -75,15 +75,32 @@ Open `android/` in Android Studio as the Gradle project. Select JDK 21 as the Gr
 
 Firebase push delivery requires the matching `android/app/google-services.json`; keep that project-specific file outside version control.
 
+The app creates the `cozycraft_operations` notification channel and registers the resulting FCM token only after Android grants notification permission. Registration is not reported as successful until the authenticated `register_mobile_push_token` RPC confirms the token was stored.
+
 ## iOS
 
 ```bash
 npm run ios
 ```
 
-The command builds and synchronizes the web application, prepares Xcode's build-service environment with the Xcode 26.6 compiler-probe workaround, and opens `ios/App/App.xcodeproj`. Quit any existing Xcode instance before running it. In Xcode, choose the `App` scheme and a destination, then select the development team for `com.cozycraft.admin`. Physical-device push notifications require a provisioning profile with the Push Notifications capability.
+The command builds and synchronizes the web application, prepares Xcode's build-service environment with the Xcode 26.6 compiler-probe workaround, and opens `ios/App/App.xcodeproj`. Quit any existing Xcode instance before running it. In Xcode, choose the `App` scheme and a destination, then select the development team for `com.cozycraft.admin`.
+
+The checked-in project intentionally leaves the iOS Push Notifications capability disabled so it can still be signed and launched by an Apple Personal Team. Apple does not allow Personal Team provisioning profiles to include remote push notifications. To activate iOS native alerts, select a paid Apple Developer Program team, open **Signing & Capabilities**, add **Push Notifications**, and rebuild on the physical device. Xcode will add the required `aps-environment` entitlement. Debug device tokens use the APNs sandbox; release/TestFlight tokens use production APNs.
 
 The workaround is intentionally narrow: it asks Apple Clang to remove the verbose `-v` argument that causes Xcode's `-E -dM /dev/null` compiler metadata probe to exceed the build service's output pipe and stall during pre-planning. The app continues to use Xcode's standard Apple Clang toolchain, SDKs, compiler arguments, linker, and signing flow.
+
+## Native alert delivery
+
+The installed app performs the complete client registration sequence: permission check, operating-system token registration, authenticated token persistence, foreground presentation, deep-link handling, removal, and startup verification. Provider credentials remain outside the application bundle.
+
+The server-side `dispatch-admin-push` Edge Function requires these Supabase secrets:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON` for Android FCM delivery
+- `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, and `APNS_BUNDLE_ID=com.cozycraft.admin` for iOS APNs delivery
+- `APNS_PRODUCTION=false` while testing a Debug build from Xcode, and `APNS_PRODUCTION=true` for release/TestFlight tokens
+- `ADMIN_PUSH_WEBHOOK_SECRET` for authenticated notification webhooks
+
+Do not place private server credentials in `.env.local`, `google-services.json`, the Angular bundle, or the Git repository.
 
 ## Development conventions
 

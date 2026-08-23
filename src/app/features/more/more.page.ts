@@ -53,9 +53,13 @@ import { initials } from '../../core/utils/format';
           </article>
           <article class="device-card device-alerts">
             <span><ion-icon name="notifications-outline"></ion-icon><i [class.is-on]="native.pushEnabled()"></i></span>
-            <div><small>NATIVE ALERTS</small><b>{{ native.pushEnabled() ? 'Registered' : 'Optional alerts' }}</b><p>Realtime in-app updates remain active.</p></div>
-            <button type="button" [disabled]="pushWorking()" (click)="togglePush()">
-              @if (pushWorking()) { <ion-spinner name="crescent"></ion-spinner> } @else { {{ native.pushEnabled() ? 'Remove' : 'Register' }} }
+            <div><small>NATIVE ALERTS</small><b>{{ native.pushRegistration().title }}</b><p>{{ native.pushRegistration().detail }}</p></div>
+            <button
+              type="button"
+              [disabled]="pushWorking() || (!native.pushEnabled() && !native.pushRegistration().canRegister)"
+              (click)="togglePush()"
+            >
+              @if (pushWorking()) { <ion-spinner name="crescent"></ion-spinner> } @else { {{ native.pushEnabled() ? 'Remove' : native.pushRegistration().action }} }
             </button>
           </article>
         </div>
@@ -139,7 +143,9 @@ export class MorePage {
     }
     const message = await this.native.registerPushNotifications();
     this.pushWorking.set(false);
-    await this.toast.show(message ?? 'Device registration requested.', message ? 'neutral' : 'success');
+    if (!message) await this.native.success();
+    else await this.native.warning();
+    await this.toast.show(message ?? 'Native alerts are active on this device.', message ? 'neutral' : 'success');
   }
 
   async toggleBiometrics() {

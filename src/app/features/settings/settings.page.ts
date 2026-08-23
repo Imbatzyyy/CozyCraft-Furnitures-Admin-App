@@ -127,8 +127,7 @@ export class StoreSettingsPage {
   readonly canEdit = computed(() => this.auth.role() === 'superadmin');
   readonly integrationEntries = signal<Array<{ key: string; label: string; available: boolean }>>([]);
   readonly pushStatusLabel = computed(() => {
-    if (!this.native.native()) return 'Available in installed Android and iOS builds';
-    return this.native.pushEnabled() ? 'Registered on this device' : 'Not registered on this device';
+    return this.native.pushRegistration().detail;
   });
 
   readonly form = new FormGroup({
@@ -366,7 +365,7 @@ export class StoreSettingsPage {
       await this.toast.show(message, this.native.native() ? 'neutral' : 'success');
       return;
     }
-    const successMessage = 'Push registration requested. This device will receive live operational alerts once its native token is confirmed.';
+    const successMessage = 'Native alerts are active. This device token was confirmed and securely registered to your administrator account.';
     this.notice.set({ message: successMessage, tone: 'success' });
     await this.toast.show(successMessage, 'success');
     await this.native.success();
