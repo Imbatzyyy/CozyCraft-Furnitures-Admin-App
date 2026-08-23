@@ -1,0 +1,99 @@
+<main class="cc-page activity-page">
+  <section class="activity-hero" aria-labelledby="activity-title">
+    <div class="activity-hero__topline">
+      <p class="cc-eyebrow">AUDIT / LIVE LEDGER</p>
+      <span class="live-state" [class.is-offline]="data.realtimeStatus() !== 'live'"><i></i>{{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}</span>
+    </div>
+
+    <div class="activity-hero__intro">
+      <div>
+        <h1 id="activity-title">Activity,<br /><em>made clear.</em></h1>
+        <p>People, store operations, security, and app health in one traceable mobile ledger.</p>
+      </div>
+      <button class="refresh-button" type="button" aria-label="Refresh activity" [disabled]="data.activityLoading()" (click)="refresh()">
+        @if (data.activityLoading()) { <ion-spinner name="crescent" /> } @else { <ion-icon name="refresh-outline" /> }
+      </button>
+    </div>
+
+    <div class="activity-hero__metrics" aria-label="Loaded activity summary">
+      <div><strong>{{ timeline().length }}</strong><span>loaded</span></div>
+      <div><strong>{{ mobileCount() }}</strong><span>mobile</span></div>
+      <div><strong>{{ actorCount() }}</strong><span>actors</span></div>
+      <div class="is-alert"><strong>{{ errorCount() }}</strong><span>errors</span></div>
+    </div>
+  </section>
+
+  <nav class="scope-rail" aria-label="Activity areas">
+    @for (option of scopeOptions; track option.value) {
+      <button type="button" [class.is-active]="scope() === option.value" [attr.aria-pressed]="scope() === option.value" (click)="selectScope(option.value)">
+        <ion-icon [name]="option.icon" />
+        <span>{{ option.label }}</span>
+        <b>{{ scopeCount(option.value) }}</b>
+      </button>
+    }
+  </nav>
+
+  <section class="activity-controls" aria-label="Search and filter activity">
+    <ion-searchbar mode="ios" inputmode="search" enterkeyhint="search" placeholder="Search actor, action, ID…" [debounce]="180" [value]="query()" (ionInput)="setQuery($any($event).detail.value)"></ion-searchbar>
+    <button class="filter-button" type="button" [class.is-active]="filtersOpen() || activeFilterCount() > 0" [attr.aria-expanded]="filtersOpen()" aria-controls="activity-filter-panel" (click)="toggleFilters()">
+      <ion-icon name="options-outline" /><span>Filter</span>@if (activeFilterCount() > 0) { <b>{{ activeFilterCount() }}</b> }
+    </button>
+  </section>
+
+  @if (filtersOpen()) {
+    <section id="activity-filter-panel" class="filter-panel">
+      <header><div><p class="cc-eyebrow">REFINE LEDGER</p><h2>Show what matters</h2></div><button type="button" (click)="resetFilters()">Reset</button></header>
+      <div class="filter-group"><span>Time period</span><div role="group" aria-label="Activity time period">@for (option of rangeOptions; track option.value) { <button type="button" [class.is-active]="range() === option.value" [attr.aria-pressed]="range() === option.value" [disabled]="data.activityLoading()" (click)="selectRange(option.value)">{{ option.label }}</button> }</div></div>
+      <div class="filter-group"><span>Channel</span><div role="group" aria-label="Activity channel">@for (option of channelOptions; track option.value) { <button type="button" [class.is-active]="channel() === option.value" [attr.aria-pressed]="channel() === option.value" (click)="selectChannel(option.value)">{{ option.label }}</button> }</div></div>
+      <div class="filter-group"><span>Actor role</span><div role="group" aria-label="Actor role">@for (option of roleOptions; track option.value) { <button type="button" [class.is-active]="role() === option.value" [attr.aria-pressed]="role() === option.value" (click)="selectRole(option.value)">{{ option.label }}</button> }</div></div>
+    </section>
+  }
+
+  <header class="ledger-heading">
+    <div><p class="cc-eyebrow">{{ periodLabel() }}</p><h2>{{ scope() === 'all' ? 'Complete ledger' : title(scope()) + ' activity' }}</h2></div>
+    <span><i></i>{{ resultsLabel() }}</span>
+  </header>
+
+  @if (data.activityLoading() && timeline().length === 0) {
+    <section class="activity-skeleton" aria-label="Loading activity">@for (row of [1, 2, 3, 4, 5]; track row) { <i></i> }</section>
+  } @else if (groups().length) {
+    <section class="timeline" aria-label="Activity timeline">
+      @for (group of groups(); track group.key) {
+        <section class="day-group">
+          <header><div><h3>{{ group.label }}</h3><span>{{ group.detail }}</span></div><b>{{ group.items.length }}</b></header>
+          <div class="day-group__events">
+            @for (item of group.items; track item.id) {
+              <article class="event-card" [class.is-expanded]="expandedId() === item.id" [class.is-error]="item.kind === 'error'">
+                <button class="event-card__summary" type="button" [attr.aria-expanded]="expandedId() === item.id" (click)="toggleDetails(item)">
+                  <span class="event-icon"><ion-icon [name]="iconFor(item)" /></span>
+                  <span class="event-copy">
+                    <span class="event-copy__top"><strong>{{ item.title }}</strong><time>{{ timeLabel(item.createdAt) }}</time></span>
+                    <span class="event-summary">{{ item.summary || title(item.entity) }}</span>
+                    <span class="event-context"><b>{{ item.actor }}</b><i>·</i>{{ title(item.role) }}<i>·</i>{{ title(item.platform) }}</span>
+                  </span>
+                  <ion-icon class="event-chevron" [name]="expandedId() === item.id ? 'chevron-up-outline' : 'chevron-down-outline'" />
+                </button>
+
+                @if (expandedId() === item.id) {
+                  <div class="event-details">
+                    <div class="event-details__identity"><span><small>Event</small><strong>{{ item.id }}</strong></span><span><small>Entity</small><strong>{{ title(item.entity) }}</strong></span>@if (item.entityId) { <span><small>Record</small><strong>{{ item.entityId }}</strong></span> }</div>
+                    @if (item.metadata.length) { <dl>@for (entry of item.metadata; track entry.label) { <div><dt>{{ entry.label }}</dt><dd>{{ entry.value }}</dd></div> }</dl> } @else { <p class="no-metadata">No additional metadata was attached to this event.</p> }
+                    <footer><ion-icon name="time-outline" />Recorded {{ fullDate(item.createdAt) }}</footer>
+                  </div>
+                }
+              </article>
+            }
+          </div>
+        </section>
+      }
+    </section>
+
+    @if (canLoadMore()) {
+      <button class="load-more" type="button" [disabled]="data.activityLoading()" (click)="loadOlder()">@if (data.activityLoading()) { <ion-spinner name="crescent" /> } @else { <ion-icon name="arrow-down-outline" /> }<span>{{ hasLocalMore() ? 'Show more loaded records' : 'Load older activity' }}</span></button>
+      <p class="egress-note"><ion-icon name="leaf-outline" />Older records load in small pages only when requested.</p>
+    }
+  } @else {
+    <cc-empty-state icon="pulse-outline" title="No matching activity" message="Change the search, area, channel, actor, or time period to widen this view." />
+    @if (data.activityHasMore()) { <button class="load-more" type="button" [disabled]="data.activityLoading()" (click)="loadOlder()"><ion-icon name="arrow-down-outline" /><span>Search older activity</span></button> }
+  }
+</main>

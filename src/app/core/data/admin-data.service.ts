@@ -73,6 +73,13 @@ type RefreshTarget =
   | 'team'
   | 'activity';
 
+type ActivityLoadMode = 'replace' | 'append' | 'refresh';
+
+const ACTIVITY_LOG_PAGE_SIZE = 72;
+const CLIENT_ERROR_PAGE_SIZE = 16;
+const ACTIVITY_REFRESH_PAGE_SIZE = 24;
+const CLIENT_ERROR_REFRESH_PAGE_SIZE = 8;
+
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
   private readonly client = this.connection.client;
@@ -98,6 +105,11 @@ export class AdminDataService {
   private readonly notificationsState = signal<AdminNotification[]>([]);
   private readonly activityState = signal<ActivityLog[]>([]);
   private readonly clientErrorsState = signal<ClientErrorEvent[]>([]);
+  private readonly activityLoadingState = signal(false);
+  private readonly activityHasMoreState = signal(false);
+  private readonly activityRangeDaysState = signal<number | null>(30);
+  private activityLogsHaveMore = true;
+  private clientErrorsHaveMore = true;
   private readonly teamState = signal<TeamMember[]>([]);
   private readonly settingsState = signal<StoreSettings>(defaultStoreSettings);
   private readonly securityState = signal<AdminSecuritySettings>(defaultAdminSecuritySettings);
@@ -119,6 +131,9 @@ export class AdminDataService {
   readonly notifications = this.notificationsState.asReadonly();
   readonly activity = this.activityState.asReadonly();
   readonly clientErrors = this.clientErrorsState.asReadonly();
+  readonly activityLoading = this.activityLoadingState.asReadonly();
+  readonly activityHasMore = this.activityHasMoreState.asReadonly();
+  readonly activityRangeDays = this.activityRangeDaysState.asReadonly();
   readonly team = this.teamState.asReadonly();
   readonly settings = this.settingsState.asReadonly();
   readonly security = this.securityState.asReadonly();
@@ -506,34 +521,115 @@ export class AdminDataService {
     this.teamState.set((data ?? []) as TeamMember[]);
   }
 
-  async loadActivity(days = 30, generation = this.workspaceGeneration) {
+  async loadActivity(
+    days: number | null = 30,
+    generation = this.workspaceGeneration,
+    mode: ActivityLoadMode = 'replace',
+  ) {
+    // A live event can arrive while the administrator changes the period or
+    // requests an older page. The active request already includes that event
+    // window, so do not let a background head refresh supersede it.
+    if (mode !== 'replace' && this.activityLoadingState()) return;
     const request = this.beginRequest('activity', generation);
-    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    if (request < 0) return;
+    this.activityLoadingState.set(true);
+
+    const replacing = mode === 'replace' || this.activityRangeDaysState() !== days;
+    const activityLimit = mode === 'refresh' ? ACTIVITY_REFRESH_PAGE_SIZE : ACTIVITY_LOG_PAGE_SIZE;
+    const errorLimit = mode === 'refresh' ? CLIENT_ERROR_REFRESH_PAGE_SIZE : CLIENT_ERROR_PAGE_SIZE;
+
+    const since = days === null ? null : new Date(Date.now() - days * 86_400_000).toISOString();
+    const activityCursor = mode === 'append' ? this.activityState().at(-1) ?? null : null;
+    const errorCursor = mode === 'append' ? this.clientErrorsState().at(-1) ?? null : null;
+
+    let activityQuery = this.client
+      .from('activity_logs')
+      .select('id,action,entity_type,entity_id,details,created_at,platform,actor_role,profiles!activity_logs_actor_id_fkey(full_name,email,role)')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(activityLimit);
+    let errorQuery = this.client
+      .from('client_error_events')
+      .select('id,message,path,context,created_at,profiles!client_error_events_user_id_fkey(full_name,email,role)')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(errorLimit);
+
+    if (since) {
+      activityQuery = activityQuery.gte('created_at', since);
+      errorQuery = errorQuery.gte('created_at', since);
+    }
+    if (activityCursor) {
+      activityQuery = activityQuery.or(`created_at.lt.${activityCursor.created_at},and(created_at.eq.${activityCursor.created_at},id.lt.${activityCursor.id})`);
+    }
+    if (errorCursor) {
+      errorQuery = errorQuery.or(`created_at.lt.${errorCursor.created_at},and(created_at.eq.${errorCursor.created_at},id.lt.${errorCursor.id})`);
+    }
+
     const [activityResult, errorResult] = await Promise.all([
-      this.client
-        .from('activity_logs')
-        .select('id,action,entity_type,entity_id,details,created_at,platform,actor_role,profiles!activity_logs_actor_id_fkey(full_name,email,role)')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(1000),
-      this.client
-        .from('client_error_events')
-        .select('id,message,stack,path,context,user_agent,created_at,profiles!client_error_events_user_id_fkey(full_name,email,role)')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(300),
+      mode === 'append' && !this.activityLogsHaveMore
+        ? Promise.resolve({ data: [], error: null })
+        : activityQuery,
+      mode === 'append' && !this.clientErrorsHaveMore
+        ? Promise.resolve({ data: [], error: null })
+        : errorQuery,
     ]);
-    if (activityResult.error) throw activityResult.error;
-    if (errorResult.error) throw errorResult.error;
+    if (activityResult.error) {
+      if (this.requestIsCurrent('activity', request, generation)) this.activityLoadingState.set(false);
+      throw activityResult.error;
+    }
+    if (errorResult.error) {
+      if (this.requestIsCurrent('activity', request, generation)) this.activityLoadingState.set(false);
+      throw errorResult.error;
+    }
     if (!this.requestIsCurrent('activity', request, generation)) return;
-    this.activityState.set((activityResult.data ?? []).map((row) => ({
+
+    const activityRows = (activityResult.data ?? []).map((row) => ({
       ...row,
       profiles: this.singleRelation(row.profiles),
-    })) as unknown as ActivityLog[]);
-    this.clientErrorsState.set((errorResult.data ?? []).map((row) => ({
+    })) as unknown as ActivityLog[];
+    const errorRows = (errorResult.data ?? []).map((row) => ({
       ...row,
+      stack: null,
+      user_agent: null,
       profiles: this.singleRelation(row.profiles),
-    })) as unknown as ClientErrorEvent[]);
+    })) as unknown as ClientErrorEvent[];
+
+    if (replacing) {
+      this.activityRangeDaysState.set(days);
+      this.activityLogsHaveMore = true;
+      this.clientErrorsHaveMore = true;
+    }
+
+    if (mode === 'append') {
+      this.activityState.set(this.mergeActivityRows(this.activityState(), activityRows));
+      this.clientErrorsState.set(this.mergeActivityRows(this.clientErrorsState(), errorRows));
+    } else if (mode === 'refresh' && !replacing) {
+      this.activityState.set(this.mergeActivityRows(activityRows, this.activityState()));
+      this.clientErrorsState.set(this.mergeActivityRows(errorRows, this.clientErrorsState()));
+    } else {
+      this.activityState.set(activityRows);
+      this.clientErrorsState.set(errorRows);
+    }
+
+    if (mode !== 'refresh' || replacing) {
+      if (mode !== 'append' || this.activityLogsHaveMore) {
+        this.activityLogsHaveMore = activityRows.length === ACTIVITY_LOG_PAGE_SIZE;
+      }
+      if (mode !== 'append' || this.clientErrorsHaveMore) {
+        this.clientErrorsHaveMore = errorRows.length === CLIENT_ERROR_PAGE_SIZE;
+      }
+    }
+    this.activityHasMoreState.set(this.activityLogsHaveMore || this.clientErrorsHaveMore);
+    this.activityLoadingState.set(false);
+  }
+
+  loadMoreActivity() {
+    return this.loadActivity(this.activityRangeDaysState(), this.workspaceGeneration, 'append');
+  }
+
+  refreshActivity() {
+    return this.loadActivity(this.activityRangeDaysState(), this.workspaceGeneration, 'refresh');
   }
 
   async markNotificationRead(notificationId: number, read = true) {
@@ -677,7 +773,7 @@ export class AdminDataService {
       notifications: () => this.loadNotifications(generation),
       settings: () => this.loadSettings(generation),
       team: () => this.loadTeam(generation),
-      activity: () => this.loadActivity(30, generation),
+      activity: () => this.loadActivity(this.activityRangeDaysState(), generation, 'refresh'),
     };
     return actions[target]();
   }
@@ -711,6 +807,11 @@ export class AdminDataService {
     this.notificationsState.set([]);
     this.activityState.set([]);
     this.clientErrorsState.set([]);
+    this.activityLoadingState.set(false);
+    this.activityHasMoreState.set(false);
+    this.activityRangeDaysState.set(30);
+    this.activityLogsHaveMore = true;
+    this.clientErrorsHaveMore = true;
     this.teamState.set([]);
     this.settingsState.set(defaultStoreSettings);
     this.securityState.set(defaultAdminSecuritySettings);
@@ -723,6 +824,15 @@ export class AdminDataService {
 
   private singleRelation<T>(value: T | T[] | null | undefined): T | null {
     return Array.isArray(value) ? value[0] ?? null : value ?? null;
+  }
+
+  private mergeActivityRows<T extends { id: number; created_at: string }>(first: T[], second: T[]) {
+    const rows = new Map<number, T>();
+    for (const row of [...first, ...second]) rows.set(row.id, row);
+    return [...rows.values()].sort((left, right) => {
+      const createdDifference = Date.parse(right.created_at) - Date.parse(left.created_at);
+      return createdDifference || right.id - left.id;
+    });
   }
 
   private avatarObjectPath(value: string | null | undefined) {
