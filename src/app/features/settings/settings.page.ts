@@ -365,7 +365,7 @@ export class StoreSettingsPage {
       await this.toast.show(message, this.native.native() ? 'neutral' : 'success');
       return;
     }
-    const successMessage = 'Native alerts are active. This device token was confirmed and securely registered to your administrator account.';
+    const successMessage = 'Native alerts are active on this device. CozyCraft Admin will surface operational updates through the best delivery path available to this build.';
     this.notice.set({ message: successMessage, tone: 'success' });
     await this.toast.show(successMessage, 'success');
     await this.native.success();

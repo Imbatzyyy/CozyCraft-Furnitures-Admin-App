@@ -2,6 +2,7 @@ import { computed, Injectable, signal } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AdminAuthService } from '../auth/admin-auth.service';
 import { SupabaseAdminService } from '../auth/supabase-admin.service';
+import { NativePlatformService } from '../native/native-platform.service';
 import {
   ActivityLog,
   Address,
@@ -221,6 +222,7 @@ export class AdminDataService {
   constructor(
     private readonly connection: SupabaseAdminService,
     private readonly auth: AdminAuthService,
+    private readonly native: NativePlatformService,
   ) {}
 
   async start() {
@@ -741,7 +743,25 @@ export class AdminDataService {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         this.handleProfileChange(payload, generation);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notifications' }, () => this.scheduleRefresh('notifications', generation))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notifications' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const notification = payload.new as Partial<AdminNotification>;
+          const validKind = ['order', 'review', 'support', 'inventory', 'report', 'system']
+            .includes(String(notification.kind));
+          if (typeof notification.id === 'number' && validKind
+            && typeof notification.title === 'string' && typeof notification.message === 'string') {
+            void this.native.presentLocalAdminNotification({
+              id: notification.id,
+              kind: notification.kind as AdminNotification['kind'],
+              title: notification.title,
+              message: notification.message,
+              entity_id: typeof notification.entity_id === 'string' ? notification.entity_id : null,
+              route: typeof notification.route === 'string' ? notification.route : '/app/notifications',
+            });
+          }
+        }
+        this.scheduleRefresh('notifications', generation);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notification_reads' }, () => this.scheduleRefresh('notifications', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, () => this.scheduleRefresh('settings', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_security_settings' }, () => {

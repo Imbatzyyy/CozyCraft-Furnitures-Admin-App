@@ -5,10 +5,12 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { Keyboard } from '@capacitor/keyboard';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications, Token } from '@capacitor/push-notifications';
 import { SupabaseAdminService } from '../auth/supabase-admin.service';
 import { AdminAuthService } from '../auth/admin-auth.service';
 import { AppLockService } from '../auth/app-lock.service';
+import { AdminNotification } from '../models/admin.models';
 import { canAccessRoute } from '../utils/admin-permissions';
 import { environment } from '../../../environments/environment.generated';
 
@@ -35,12 +37,15 @@ export class NativePlatformService {
   private static readonly BACKGROUND_UNLOCK_GRACE_MS = 15_000;
   private static readonly PUSH_REGISTRATION_TIMEOUT_MS = 25_000;
   private static readonly ANDROID_PUSH_CHANNEL = 'cozycraft_operations';
+  private static readonly IOS_LOCAL_ALERT_OWNER_KEY = 'cozycraft-admin-ios-local-alert-owner';
   readonly native = signal(Capacitor.isNativePlatform());
   readonly platform = signal(Capacitor.getPlatform());
   readonly online = signal(navigator.onLine);
   readonly foreground = signal(true);
   private pushToken = localStorage.getItem('cozycraft-admin-push-token') ?? '';
   private pushOwner = localStorage.getItem('cozycraft-admin-push-owner') ?? '';
+  private iosLocalAlertOwner = localStorage.getItem(NativePlatformService.IOS_LOCAL_ALERT_OWNER_KEY) ?? '';
+  private readonly presentedLocalAlertIds = new Set<number>();
   private pendingPushRevocations = this.readPendingRevocations();
   private readonly pushRegistrationValid = signal(Boolean(this.pushToken));
   private readonly pushRegistrationState = signal<NativePushRegistration>({
@@ -52,8 +57,11 @@ export class NativePlatformService {
   });
   readonly pushRegistration = this.pushRegistrationState.asReadonly();
   readonly pushEnabled = computed(() => this.pushRegistrationState().phase === 'registered'
-    && this.pushRegistrationValid() && Boolean(this.pushToken) && this.pushOwner === this.auth.userId());
+    && ((this.pushRegistrationValid() && Boolean(this.pushToken) && this.pushOwner === this.auth.userId())
+      || (this.platform() === 'ios' && !environment.iosPushConfigured
+        && Boolean(this.iosLocalAlertOwner) && this.iosLocalAlertOwner === this.auth.userId())));
   private pushListenersSetup: Promise<void> | null = null;
+  private localNotificationListenersSetup: Promise<void> | null = null;
   private pushRegistrationAttempt: Promise<string | null> | null = null;
   private pendingNativeRegistration: {
     settle: (message: string | null) => void;
@@ -120,6 +128,7 @@ export class NativePlatformService {
     await this.configurePushListeners().catch((error: unknown) => {
       this.setPushState('error', this.errorMessage(error, 'Native notification listeners could not be prepared.'));
     });
+    await this.configureLocalNotificationListeners().catch(() => undefined);
     await this.prepareAndroidPushChannel();
     await this.refreshPushRegistrationState(true);
   }
@@ -188,6 +197,32 @@ export class NativePlatformService {
       return;
     }
 
+    if (this.platform() === 'ios' && !environment.iosPushConfigured) {
+      try {
+        const permission = await LocalNotifications.checkPermissions();
+        if (permission.display === 'denied') {
+          this.setPushState('denied');
+          return;
+        }
+        if (this.iosLocalAlertOwner && this.iosLocalAlertOwner === this.auth.userId()) {
+          this.setPushState(
+            'registered',
+            'Live operational alerts are active on this iPhone through the same local notification path as CozyCraft Customer.',
+          );
+          return;
+        }
+        this.setPushState(
+          'ready',
+          permission.display === 'granted'
+            ? 'Permission is ready. Register this iPhone for live operational alerts.'
+            : 'Register to show live operational alerts on this iPhone.',
+        );
+      } catch (error: unknown) {
+        this.setPushState('error', this.errorMessage(error, 'iPhone notification permission could not be checked.'));
+      }
+      return;
+    }
+
     try {
       const permission = await PushNotifications.checkPermissions();
       if (permission.receive === 'denied') {
@@ -239,6 +274,10 @@ export class NativePlatformService {
       const message = 'Android alerts need the project-specific android/app/google-services.json file before this device can register.';
       this.setPushState('setup-required', message);
       return message;
+    }
+
+    if (this.platform() === 'ios' && !environment.iosPushConfigured) {
+      return this.registerIosLocalAlerts();
     }
 
     this.setPushState('registering');
@@ -317,6 +356,83 @@ export class NativePlatformService {
     }).catch(() => undefined);
   }
 
+  private async registerIosLocalAlerts(): Promise<string | null> {
+    this.setPushState('registering', 'Preparing live operational alerts on this iPhone.');
+    try {
+      const current = await LocalNotifications.checkPermissions();
+      const permission = current.display === 'granted'
+        ? current
+        : await LocalNotifications.requestPermissions();
+      if (permission.display !== 'granted') {
+        const message = 'Notifications are disabled. Enable CozyCraft Admin in iPhone Settings › Notifications, then tap Retry.';
+        this.setPushState('denied', message);
+        return message;
+      }
+      await this.configureLocalNotificationListeners();
+      this.iosLocalAlertOwner = this.auth.userId() ?? '';
+      localStorage.setItem(NativePlatformService.IOS_LOCAL_ALERT_OWNER_KEY, this.iosLocalAlertOwner);
+      this.setPushState(
+        'registered',
+        'Live operational alerts are active on this iPhone through the same local notification path as CozyCraft Customer.',
+      );
+      return null;
+    } catch (error: unknown) {
+      const message = this.errorMessage(error, 'Live iPhone alerts could not be enabled.');
+      this.setPushState('error', message);
+      return message;
+    }
+  }
+
+  async presentLocalAdminNotification(notification: Pick<AdminNotification,
+    'id' | 'kind' | 'title' | 'message' | 'entity_id' | 'route'>) {
+    if (!this.native() || this.platform() !== 'ios' || environment.iosPushConfigured) return;
+    if (!this.auth.signedIn() || !this.auth.userId() || this.iosLocalAlertOwner !== this.auth.userId()) return;
+    if (this.presentedLocalAlertIds.has(notification.id)) return;
+    const permission = await LocalNotifications.checkPermissions().catch(() => null);
+    if (permission?.display !== 'granted') return;
+
+    this.presentedLocalAlertIds.add(notification.id);
+    if (this.presentedLocalAlertIds.size > 256) {
+      const oldest = this.presentedLocalAlertIds.values().next().value as number | undefined;
+      if (oldest !== undefined) this.presentedLocalAlertIds.delete(oldest);
+    }
+    const id = Math.abs(notification.id % 2_147_483_647) || 1;
+    await LocalNotifications.schedule({ notifications: [{
+      id,
+      title: notification.title || 'CozyCraft Admin update',
+      body: notification.message || 'A new operational update is available.',
+      schedule: { at: new Date(Date.now() + 250) },
+      sound: 'default',
+      extra: {
+        notification_id: String(notification.id),
+        kind: notification.kind,
+        entity_id: notification.entity_id ?? '',
+        route: notification.route || '/app/notifications',
+      },
+    }] }).catch(() => {
+      this.presentedLocalAlertIds.delete(notification.id);
+    });
+  }
+
+  private async configureLocalNotificationListeners() {
+    if (!this.native() || this.platform() !== 'ios') return;
+    if (!this.localNotificationListenersSetup) {
+      this.localNotificationListenersSetup = LocalNotifications
+        .addListener('localNotificationActionPerformed', ({ notification }) => {
+          const extra = notification.extra && typeof notification.extra === 'object'
+            ? notification.extra as Record<string, unknown>
+            : undefined;
+          void this.openPushDestination(extra);
+        })
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          this.localNotificationListenersSetup = null;
+          throw error;
+        });
+    }
+    await this.localNotificationListenersSetup;
+  }
+
   private async configurePushListeners() {
     if (!this.native()) return;
     if (!this.pushListenersSetup) {
@@ -391,6 +507,14 @@ export class NativePlatformService {
     // the native exception is fatal before JavaScript can catch it.
     if (this.native() && token && (this.platform() !== 'android' || environment.androidPushConfigured)) {
       await PushNotifications.unregister().catch(() => undefined);
+    }
+    if (this.platform() === 'ios' && this.iosLocalAlertOwner) {
+      const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
+      if (pending.notifications.length) await LocalNotifications.cancel(pending).catch(() => undefined);
+      await LocalNotifications.removeAllDeliveredNotifications().catch(() => undefined);
+      this.iosLocalAlertOwner = '';
+      localStorage.removeItem(NativePlatformService.IOS_LOCAL_ALERT_OWNER_KEY);
+      this.presentedLocalAlertIds.clear();
     }
     this.clearCurrentPushRegistration();
     this.settleNativeRegistration('Native alert registration was cancelled.');
@@ -538,7 +662,7 @@ export class NativePlatformService {
           return {
             phase,
             title: 'Registering device',
-            detail: `Waiting for a protected notification token from this ${platformName}.`,
+            detail: detail ?? `Waiting for a protected notification token from this ${platformName}.`,
             action: 'Registering',
             canRegister: false,
           };
@@ -546,7 +670,7 @@ export class NativePlatformService {
           return {
             phase,
             title: 'Native alerts active',
-            detail: `Operational notifications are registered to this ${platformName}.`,
+            detail: detail ?? `Operational notifications are registered to this ${platformName}.`,
             action: 'Remove',
             canRegister: true,
           };

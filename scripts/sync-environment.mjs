@@ -35,12 +35,15 @@ const values = candidates.reduce((result, candidate) => {
 const supabaseUrl = values.VITE_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
 const supabaseKey = values.VITE_SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '';
 const androidPushConfigured = existsSync(resolve(appDirectory, 'android/app/google-services.json'));
+const iosEntitlementsPath = resolve(appDirectory, 'ios/App/App/App.entitlements');
+const iosPushConfigured = existsSync(iosEntitlementsPath)
+  && /<key>aps-environment<\/key>/.test(readFileSync(iosEntitlementsPath, 'utf8'));
 const output = resolve(appDirectory, 'src/environments/environment.generated.ts');
 
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(
   output,
-  `// Generated from a local environment file. Do not commit.\nexport const environment = {\n  production: false,\n  supabaseUrl: ${JSON.stringify(supabaseUrl)},\n  supabasePublishableKey: ${JSON.stringify(supabaseKey)},\n  androidPushConfigured: ${JSON.stringify(androidPushConfigured)},\n} as const;\n`,
+  `// Generated from a local environment file. Do not commit.\nexport const environment = {\n  production: false,\n  supabaseUrl: ${JSON.stringify(supabaseUrl)},\n  supabasePublishableKey: ${JSON.stringify(supabaseKey)},\n  androidPushConfigured: ${JSON.stringify(androidPushConfigured)},\n  iosPushConfigured: ${JSON.stringify(iosPushConfigured)},\n} as const;\n`,
   'utf8',
 );
 
