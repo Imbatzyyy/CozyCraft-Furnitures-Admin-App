@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { KeychainAccess, SecureStorage } from '@aparajita/capacitor-secure-storage';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment.generated';
 
@@ -90,4 +90,76 @@ export class SupabaseAdminService {
       },
     },
   );
+
+  /**
+   * Invoke a protected Edge Function from web or either native shell.
+   *
+   * Native WebViews enforce browser CORS even though the request originates
+   * from an installed app. Some existing CozyCraft functions intentionally
+   * allow only storefront origins, so native requests use Capacitor's HTTP
+   * bridge while retaining the same publishable key and user JWT checks.
+   */
+  async invokeAuthenticatedFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
+    if (!this.configured()) throw new Error('This build is missing its Supabase connection settings.');
+
+    if (!Capacitor.isNativePlatform()) {
+      const { data, error } = await this.client.functions.invoke(name, { body });
+      if (!error) return data as T;
+      const context = (error as { context?: Response }).context;
+      const payload = context instanceof Response
+        ? await context.clone().json().catch(() => null) as { error?: string; message?: string } | null
+        : null;
+      throw new Error(payload?.error ?? payload?.message ?? error.message ?? 'The secure service could not complete the request.');
+    }
+
+    const sessionResult = await this.client.auth.getSession();
+    if (sessionResult.error || !sessionResult.data.session?.access_token) {
+      throw new Error('Your admin session expired. Sign in again.');
+    }
+
+    let accessToken = sessionResult.data.session.access_token;
+    const expiresAt = sessionResult.data.session.expires_at ?? 0;
+    if (expiresAt && expiresAt * 1000 < Date.now() + 60_000) {
+      const refreshed = await this.client.auth.refreshSession();
+      if (refreshed.error || !refreshed.data.session?.access_token) {
+        throw new Error('Your admin session expired. Sign in again.');
+      }
+      accessToken = refreshed.data.session.access_token;
+    }
+
+    try {
+      const response = await CapacitorHttp.post({
+        url: `${environment.supabaseUrl.replace(/\/$/, '')}/functions/v1/${encodeURIComponent(name)}`,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: environment.supabasePublishableKey,
+          'Content-Type': 'application/json',
+          'x-client-info': 'cozycraft-admin-mobile/1.0',
+          'x-cozycraft-platform': 'mobile',
+        },
+        data: body,
+        connectTimeout: 15_000,
+        readTimeout: 30_000,
+      });
+      const payload = this.parseFunctionPayload(response.data);
+      if (response.status < 200 || response.status >= 300) {
+        const message = payload && typeof payload === 'object'
+          ? String((payload as { error?: unknown; message?: unknown }).error
+            ?? (payload as { message?: unknown }).message
+            ?? '')
+          : '';
+        throw new Error(message || `The secure service returned status ${response.status}.`);
+      }
+      return payload as T;
+    } catch (error: unknown) {
+      if (error instanceof Error && !/failed to (send|connect)|network|offline/i.test(error.message)) throw error;
+      throw new Error('The secure service could not be reached. Check your connection and try again.');
+    }
+  }
+
+  private parseFunctionPayload(value: unknown) {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value) as unknown; } catch { return value; }
+  }
 }

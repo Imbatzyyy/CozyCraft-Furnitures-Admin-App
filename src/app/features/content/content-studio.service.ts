@@ -218,12 +218,6 @@ export class ContentStudioService {
   }
 
   private async invokeNewsletter<T>(body: Record<string, unknown>): Promise<T> {
-    const { data, error } = await this.client.functions.invoke('newsletter-admin', { body });
-    if (!error) return data as T;
-    const context = (error as { context?: Response }).context;
-    const payload = context instanceof Response
-      ? await context.clone().json().catch(() => null) as { error?: string } | null
-      : null;
-    throw new Error(payload?.error ?? error.message ?? 'Newsletter service unavailable.');
+    return this.connection.invokeAuthenticatedFunction<T>('newsletter-admin', body);
   }
 }
