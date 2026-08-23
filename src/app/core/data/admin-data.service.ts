@@ -511,6 +511,29 @@ export class AdminDataService {
     this.securityState.set(normalizeSecuritySettings(securityResult.data as Partial<AdminSecuritySettings>));
   }
 
+  /**
+   * Reflect a successful atomic settings save immediately. Realtime remains the
+   * authority and will perform one coalesced reconciliation, but the UI does not
+   * need a second eager read just to display its own committed values.
+   */
+  applySettingsSnapshot(
+    store: StoreSettings,
+    security: AdminSecuritySettings,
+    updatedAt: string | null = null,
+  ) {
+    const nextStore = normalizeStoreSettings({
+      ...store,
+      updated_at: updatedAt ?? store.updated_at,
+    });
+    const nextSecurity = normalizeSecuritySettings({
+      ...security,
+      updated_at: updatedAt ?? security.updated_at,
+      updated_by: this.auth.userId() ?? security.updated_by,
+    });
+    this.settingsState.set(nextStore);
+    this.securityState.set(nextSecurity);
+  }
+
   async loadTeam(generation = this.workspaceGeneration) {
     const request = this.beginRequest('team', generation);
     const { data, error } = await this.client

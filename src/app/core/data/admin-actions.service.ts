@@ -141,12 +141,19 @@ export class AdminActionsService {
     if (this.auth.role() !== 'superadmin') return { error: 'Only a Super Administrator can change store settings.' };
     const { id: _storeId, updated_at: _storeUpdated, ...storeUpdate } = store;
     const { id: _securityId, updated_at: _securityUpdated, updated_by: _updatedBy, ...securityUpdate } = security;
-    const { error } = await this.client.rpc('save_admin_workspace_settings', {
+    const { data, error } = await this.client.rpc('save_admin_workspace_settings', {
       p_store: storeUpdate,
       p_security: securityUpdate,
     });
     if (!error) {
-      await Promise.all([this.data.loadSettings(), this.auth.revalidateAccess()]);
+      const returnedTimestamp = data && typeof data === 'object' && 'updatedAt' in data
+        ? data.updatedAt
+        : null;
+      const updatedAt = typeof returnedTimestamp === 'string' && returnedTimestamp
+        ? returnedTimestamp
+        : new Date().toISOString();
+      this.data.applySettingsSnapshot(store, security, updatedAt);
+      await this.auth.revalidateAccess();
     }
     return { error: error?.message ?? null };
   }

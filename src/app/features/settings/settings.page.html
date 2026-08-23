@@ -1,9 +1,9 @@
 <main class="cc-page settings-page">
   <header class="settings-hero">
     <div class="settings-hero__copy">
-      <p class="cc-eyebrow">STORE CONFIGURATION</p>
-      <h1>Quiet control.<br /><em>Total clarity.</em></h1>
-      <p>Every customer-facing rule and protected admin policy, synchronized with CozyCraft in realtime.</p>
+      <p class="cc-eyebrow">COZYCRAFT / ADMIN</p>
+      <h1>Store settings</h1>
+      <p>Storefront, fulfillment, payments, access, and reporting in one protected workspace.</p>
     </div>
     <div class="settings-hero__status" [class.is-dirty]="dirty()">
       <span class="status-orbit">
@@ -11,9 +11,8 @@
         <ion-icon [name]="dirty() ? 'create-outline' : 'checkmark-outline'"></ion-icon>
       </span>
       <span>
-        <small>{{ data.realtimeStatus() === 'live' ? 'REALTIME CONNECTED' : 'SECURE SYNC' }}</small>
-        <b>{{ dirty() ? 'Unsaved edits' : 'Live configuration' }}</b>
-        <em>{{ dirty() ? 'Review before applying' : 'Everything is current' }}</em>
+        <small>{{ data.realtimeStatus() === 'live' ? 'LIVE' : 'SYNCING' }}</small>
+        <b>{{ dirty() ? 'Changes not applied' : 'Configuration current' }}</b>
       </span>
     </div>
   </header>
@@ -34,31 +33,41 @@
   }
 
   <div class="settings-workspace">
-    <nav class="settings-nav" aria-label="Settings sections">
-      <div class="settings-nav__rail">
-        @for (item of sections; track item.id) {
-          <button
-            type="button"
-            [class.is-active]="activeSection() === item.id"
-            [attr.aria-current]="activeSection() === item.id ? 'page' : null"
-            (click)="selectSection(item.id)"
-          >
-            <span><ion-icon [name]="item.icon"></ion-icon></span>
-            <span><b>{{ item.label }}</b><small>{{ item.caption }}</small></span>
-          </button>
-        }
+    <nav class="settings-switcher" aria-label="Settings sections">
+      <button type="button" class="section-arrow" aria-label="Previous settings section" (click)="moveSection(-1)">
+        <ion-icon name="chevron-back-outline"></ion-icon>
+      </button>
+      <div class="section-picker">
+        <span class="section-picker__icon"><ion-icon [name]="activeSectionMeta().icon"></ion-icon></span>
+        <span class="section-picker__copy">
+          <small>SECTION {{ sectionPosition() }} OF {{ sections.length }}</small>
+          <b>{{ activeSectionMeta().label }}</b>
+          <em>{{ activeSectionMeta().caption }}</em>
+        </span>
+        <ion-select
+          aria-label="Choose settings section"
+          interface="action-sheet"
+          [value]="activeSection()"
+          (ionChange)="selectSection($event.detail.value)"
+        >
+          @for (item of sections; track item.id) {
+            <ion-select-option [value]="item.id">{{ item.label }} · {{ item.caption }}</ion-select-option>
+          }
+        </ion-select>
       </div>
+      <button type="button" class="section-arrow" aria-label="Next settings section" (click)="moveSection(1)">
+        <ion-icon name="chevron-forward-outline"></ion-icon>
+      </button>
+      <span class="section-progress" aria-hidden="true"><i [style.width]="sectionProgress()"></i></span>
     </nav>
 
     <form class="settings-panel cc-card" [formGroup]="form" (ngSubmit)="reviewAndSave()">
       <header class="panel-heading">
-        <span class="panel-heading__icon"><ion-icon [name]="activeSectionMeta().icon"></ion-icon></span>
         <div>
-          <p class="cc-eyebrow">{{ sectionPosition() < 10 ? '0' + sectionPosition() : sectionPosition() }} / {{ sections.length }}</p>
+          <p class="cc-eyebrow">{{ activeSectionMeta().caption }}</p>
           <h2>{{ activeSectionMeta().label }}</h2>
-          <p>{{ activeSectionMeta().caption }} · Storewide controls</p>
         </div>
-        <span class="panel-heading__access"><ion-icon name="shield-checkmark-outline"></ion-icon> Superadmin</span>
+        <span class="panel-heading__access"><ion-icon name="shield-checkmark-outline"></ion-icon>{{ canEdit() ? 'Editable' : 'View only' }}</span>
       </header>
 
       @if (!ready()) {
@@ -71,11 +80,7 @@
           @switch (activeSection()) {
             @case ('general') {
               <section class="settings-grid" formGroupName="general">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">THE STORE FRONT DOOR</p>
-                  <h3>Identity customers can trust</h3>
-                  <p>These details anchor storefront copy, support context, and customer communications.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Business details</h3><p>Information used across the storefront and customer messages.</p></div>
 
                 <label class="settings-field" [class.has-error]="form.controls.general.controls.store_name.invalid && form.controls.general.controls.store_name.touched">
                   <span>Store name <i>Required</i></span>
@@ -87,6 +92,18 @@
                   <span>Customer contact email <i>Required</i></span>
                   <ion-input formControlName="contact_email" type="email" inputmode="email" autocomplete="email" placeholder="hello&#64;cozycraft.com"></ion-input>
                   <small>Public contact address—not a secret or service credential.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Store currency</span>
+                  <ion-select formControlName="currency_code" interface="action-sheet">
+                    <ion-select-option value="PHP">PHP — Philippine peso</ion-select-option>
+                    <ion-select-option value="USD">USD — US dollar</ion-select-option>
+                    <ion-select-option value="EUR">EUR — Euro</ion-select-option>
+                    <ion-select-option value="SGD">SGD — Singapore dollar</ion-select-option>
+                    <ion-select-option value="JPY">JPY — Japanese yen</ion-select-option>
+                  </ion-select>
+                  <small>PayMongo card and GCash checkout require PHP.</small>
                 </label>
 
                 <label class="settings-field">
@@ -108,11 +125,7 @@
 
             @case ('branding') {
               <section class="settings-grid" formGroupName="branding">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">STOREFRONT VOICE</p>
-                  <h3>A measured, recognizable presence</h3>
-                  <p>Control the global announcement, maintenance state, and verified social destinations.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Storefront display</h3><p>Control the announcement, maintenance state, and social destinations.</p></div>
 
                 <label class="toggle-card">
                   <span class="toggle-card__icon"><ion-icon name="megaphone-outline"></ion-icon></span>
@@ -159,11 +172,7 @@
 
             @case ('checkout') {
               <section class="settings-grid" formGroupName="checkout">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">ORDER ECONOMICS</p>
-                  <h3>Simple thresholds, no surprises</h3>
-                  <p>All monetary values are Philippine pesos. Zero disables an optional ceiling or free-delivery threshold.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Fees and order limits</h3><p>Amounts use the selected store currency. Zero disables an optional threshold.</p></div>
 
                 <label class="settings-field">
                   <span>Standard delivery fee</span>
@@ -194,11 +203,7 @@
 
             @case ('fulfillment') {
               <section class="settings-grid" formGroupName="fulfillment">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">DELIVERY & ORDERS</p>
-                  <h3>The promise after checkout</h3>
-                  <p>Define customer expectations, protected workflow windows, and the inventory reservation clock.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Delivery workflow</h3><p>Set customer timelines, order windows, and inventory reservation.</p></div>
 
                 <label class="settings-field">
                   <span>Default delivery area</span>
@@ -243,11 +248,7 @@
 
             @case ('inventory') {
               <section class="settings-grid" formGroupName="inventory">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">AVAILABILITY</p>
-                  <h3>Keep the assortment intentional</h3>
-                  <p>Choose when the team is warned and how unavailable or discontinued pieces behave.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Availability and alerts</h3><p>Set the global threshold and control unavailable or discontinued products.</p></div>
 
                 <label class="settings-field is-wide">
                   <span>Global low-stock threshold</span>
@@ -280,11 +281,11 @@
 
             @case ('payments') {
               <section class="settings-grid" formGroupName="payments">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">PAYMENT CHOICE</p>
-                  <h3>Offer only trusted routes</h3>
-                  <p>At least one customer method must remain active. Provider credentials stay inside protected server secrets.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Payment methods</h3><p>Availability is enforced at checkout. Provider credentials remain server-side.</p></div>
+
+                @if (form.controls.general.controls.currency_code.value !== 'PHP' && (form.controls.payments.controls.card_enabled.value || form.controls.payments.controls.gcash_enabled.value)) {
+                  <aside class="currency-note is-wide"><ion-icon name="warning-outline"></ion-icon><span><b>PayMongo requires PHP</b><small>Select PHP in Business, or disable card and GCash before applying.</small></span></aside>
+                }
 
                 <label class="toggle-card">
                   <span class="toggle-card__icon"><ion-icon name="cash-outline"></ion-icon></span>
@@ -314,11 +315,7 @@
 
             @case ('notifications') {
               <section class="settings-grid" formGroupName="notifications">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">MESSAGING POLICY</p>
-                  <h3>Signals at the right moment</h3>
-                  <p>Control each persisted customer email event and register this device for live administrator alerts.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Customer messages</h3><p>Choose email events and manage native alerts for this device.</p></div>
 
                 <article class="push-card is-wide">
                   <span class="push-card__mark"><ion-icon name="notifications-outline"></ion-icon><i [class.is-on]="native.pushEnabled()"></i></span>
@@ -374,11 +371,7 @@
 
             @case ('reviews') {
               <section class="settings-grid" formGroupName="reviews">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">CUSTOMER TRUST</p>
-                  <h3>Useful stories, deliberately shared</h3>
-                  <p>Shape eligibility, moderation, length, and customer-photo support without weakening order verification.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Review policy</h3><p>Control eligibility, moderation, length, and customer photos.</p></div>
 
                 <label class="toggle-card">
                   <span class="toggle-card__icon"><ion-icon name="eye-outline"></ion-icon></span>
@@ -412,11 +405,7 @@
 
             @case ('accounts') {
               <section class="settings-grid" formGroupName="accounts">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">CUSTOMER ACCESS</p>
-                  <h3>A calm, secure first step</h3>
-                  <p>Choose the identity requirements available across customer registration, sign-in, and account security.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Customer account rules</h3><p>Configure registration, sign-in, verification, and account security.</p></div>
 
                 <label class="toggle-card">
                   <span class="toggle-card__icon"><ion-icon name="at-outline"></ion-icon></span>
@@ -452,11 +441,7 @@
 
             @case ('security') {
               <section class="settings-grid" formGroupName="security">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">ADMIN PROTECTION</p>
-                  <h3>Firm boundaries for powerful access</h3>
-                  <p>MFA and the fixed mobile inactivity boundary are enforced by this workspace. Failed-login values are retained as the policy target for Supabase Auth hook configuration.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Administrator security</h3><p>Manage MFA, session, lockout, and security-alert policies.</p></div>
 
                 <label class="toggle-card">
                   <span class="toggle-card__icon"><ion-icon name="finger-print-outline"></ion-icon></span>
@@ -498,11 +483,7 @@
 
             @case ('integrations') {
               <section class="settings-grid integrations-section">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">CONNECTED SERVICES</p>
-                  <h3>Health without exposed secrets</h3>
-                  <p>The singleton security record supplies these availability flags. Credentials stay inside Supabase and protected Edge Function secrets.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Connected services</h3><p>View protected service availability without exposing credentials.</p></div>
 
                 <div class="integration-list is-wide">
                   @for (integration of integrationEntries(); track integration.key) {
@@ -528,11 +509,7 @@
 
             @case ('reports') {
               <section class="settings-grid" formGroupName="reports">
-                <div class="section-intro is-wide">
-                  <p class="cc-eyebrow">REPORTS & PRIVACY</p>
-                  <h3>Useful memory, kept deliberately</h3>
-                  <p>Schedule performance briefings, define recipients, and cap operational telemetry retention.</p>
-                </div>
+                <div class="section-intro is-wide"><h3>Reports and retention</h3><p>Schedule briefings, set recipients, and limit operational data retention.</p></div>
 
                 <label class="toggle-card is-wide">
                   <span class="toggle-card__icon"><ion-icon name="calendar-outline"></ion-icon></span>

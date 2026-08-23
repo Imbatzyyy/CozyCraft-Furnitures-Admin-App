@@ -92,18 +92,18 @@ export class StoreSettingsPage {
   private hydrated = false;
 
   readonly sections: readonly SettingsSectionItem[] = [
-    { id: 'general', label: 'General', caption: 'Identity & contact', icon: 'storefront-outline' },
-    { id: 'branding', label: 'Branding', caption: 'Banner & social', icon: 'color-palette-outline' },
-    { id: 'checkout', label: 'Checkout', caption: 'Fees & limits', icon: 'bag-check-outline' },
-    { id: 'fulfillment', label: 'Fulfillment', caption: 'Delivery workflow', icon: 'cube-outline' },
-    { id: 'inventory', label: 'Inventory', caption: 'Availability rules', icon: 'layers-outline' },
-    { id: 'payments', label: 'Payments', caption: 'Customer methods', icon: 'card-outline' },
-    { id: 'notifications', label: 'Notifications', caption: 'Email & device', icon: 'notifications-outline' },
-    { id: 'reviews', label: 'Reviews', caption: 'Trust controls', icon: 'star-outline' },
-    { id: 'accounts', label: 'Accounts', caption: 'Customer access', icon: 'person-circle-outline' },
-    { id: 'security', label: 'Security', caption: 'Admin protection', icon: 'shield-checkmark-outline' },
-    { id: 'integrations', label: 'Integrations', caption: 'Service health', icon: 'git-network-outline' },
-    { id: 'reports', label: 'Reports & privacy', caption: 'Briefings & retention', icon: 'analytics-outline' },
+    { id: 'general', label: 'Business', caption: 'Identity, contact & currency', icon: 'storefront-outline' },
+    { id: 'branding', label: 'Storefront', caption: 'Announcement & social links', icon: 'color-palette-outline' },
+    { id: 'checkout', label: 'Checkout', caption: 'Fees & order limits', icon: 'bag-check-outline' },
+    { id: 'fulfillment', label: 'Delivery', caption: 'Fulfillment workflow', icon: 'cube-outline' },
+    { id: 'inventory', label: 'Inventory', caption: 'Availability & alerts', icon: 'layers-outline' },
+    { id: 'payments', label: 'Payments', caption: 'Accepted methods', icon: 'card-outline' },
+    { id: 'notifications', label: 'Messages', caption: 'Email & device alerts', icon: 'notifications-outline' },
+    { id: 'reviews', label: 'Reviews', caption: 'Moderation policy', icon: 'star-outline' },
+    { id: 'accounts', label: 'Accounts', caption: 'Customer access rules', icon: 'person-circle-outline' },
+    { id: 'security', label: 'Security', caption: 'Administrator protection', icon: 'shield-checkmark-outline' },
+    { id: 'integrations', label: 'Services', caption: 'Connection status', icon: 'git-network-outline' },
+    { id: 'reports', label: 'Reports', caption: 'Schedules & retention', icon: 'analytics-outline' },
   ];
 
   readonly activeSection = signal<SettingsSection>('general');
@@ -121,6 +121,9 @@ export class StoreSettingsPage {
   readonly sectionPosition = computed(() =>
     this.sections.findIndex((item) => item.id === this.activeSection()) + 1,
   );
+  readonly sectionProgress = computed(() =>
+    `${Math.round((this.sectionPosition() / this.sections.length) * 100)}%`,
+  );
   readonly canEdit = computed(() => this.auth.role() === 'superadmin');
   readonly integrationEntries = signal<Array<{ key: string; label: string; available: boolean }>>([]);
   readonly pushStatusLabel = computed(() => {
@@ -134,6 +137,7 @@ export class StoreSettingsPage {
         nonNullable: true,
         validators: [Validators.required, Validators.minLength(2), Validators.maxLength(100)],
       }),
+      currency_code: new FormControl<StoreSettings['currency_code']>('PHP', { nonNullable: true }),
       contact_email: new FormControl('', {
         nonNullable: true,
         validators: [Validators.required, Validators.email],
@@ -269,6 +273,12 @@ export class StoreSettingsPage {
     this.activeSection.set(section);
     this.notice.set(null);
     void this.native.tap();
+  }
+
+  moveSection(direction: -1 | 1) {
+    const currentIndex = this.sections.findIndex((item) => item.id === this.activeSection());
+    const nextIndex = (currentIndex + direction + this.sections.length) % this.sections.length;
+    this.selectSection(this.sections[nextIndex].id);
   }
 
   normalizeOrderPrefix() {
@@ -422,6 +432,7 @@ export class StoreSettingsPage {
     this.form.patchValue({
       general: {
         store_name: store.store_name,
+        currency_code: store.currency_code,
         contact_email: store.contact_email,
         support_phone: store.support_phone,
         business_address: store.business_address,
@@ -506,6 +517,7 @@ export class StoreSettingsPage {
     return {
       ...this.storeSource,
       store_name: value.general.store_name.trim(),
+      currency_code: value.general.currency_code,
       contact_email: value.general.contact_email.trim().toLowerCase(),
       support_phone: value.general.support_phone.trim(),
       business_address: value.general.business_address.trim(),
@@ -609,6 +621,9 @@ export class StoreSettingsPage {
     }
     if (!checkout.cod_enabled && !checkout.card_enabled && !checkout.gcash_enabled) {
       return 'Keep at least one customer payment method enabled.';
+    }
+    if (store.currency_code !== 'PHP' && (checkout.card_enabled || checkout.gcash_enabled)) {
+      return 'PayMongo card and GCash checkout require PHP. Select PHP or disable those payment methods.';
     }
     const fulfillment = store.fulfillment_settings;
     if (fulfillment.estimated_delivery_days_min < 1 ||

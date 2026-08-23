@@ -318,6 +318,7 @@ export interface StoreSettings {
   id: boolean;
   store_name: string;
   store_description: string;
+  currency_code: 'PHP' | 'USD' | 'EUR' | 'SGD' | 'JPY';
   contact_email: string;
   support_phone: string;
   business_address: string;
