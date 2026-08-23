@@ -78,11 +78,12 @@ Firebase push delivery requires the matching `android/app/google-services.json`;
 ## iOS
 
 ```bash
-npm run cap:sync
-npx cap open ios
+npm run ios
 ```
 
-Open `ios/App/App.xcodeproj`, choose the `App` scheme and a destination, then select the development team for `com.cozycraft.admin`. Physical-device push notifications require a provisioning profile with the Push Notifications capability.
+The command builds and synchronizes the web application, prepares Xcode's build-service environment with the Xcode 26.6 compiler-probe workaround, and opens `ios/App/App.xcodeproj`. Quit any existing Xcode instance before running it. In Xcode, choose the `App` scheme and a destination, then select the development team for `com.cozycraft.admin`. Physical-device push notifications require a provisioning profile with the Push Notifications capability.
+
+The workaround is intentionally narrow: it asks Apple Clang to remove the verbose `-v` argument that causes Xcode's `-E -dM /dev/null` compiler metadata probe to exceed the build service's output pipe and stall during pre-planning. The app continues to use Xcode's standard Apple Clang toolchain, SDKs, compiler arguments, linker, and signing flow.
 
 ## Development conventions
 

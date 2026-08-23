@@ -17,7 +17,7 @@
     "clean": "node scripts/clean-workspace.mjs",
     "cap:sync": "npm run build:production && cap sync",
     "android": "npm run cap:sync && cap open android",
-    "ios": "npm run cap:sync && cap open ios"
+    "ios": "npm run cap:sync && node scripts/open-ios-xcode.mjs"
   },
   "dependencies": {
     "@angular/animations": "20.3.27",
