@@ -1,0 +1,198 @@
+<main class="cc-page products-page">
+  <header class="catalog-intro">
+    <div>
+      <p class="cc-eyebrow">PRODUCT LIBRARY</p>
+      <h1>Products</h1>
+      <p>Find, edit, and publish every CozyCraft piece.</p>
+    </div>
+    <a class="catalog-add" routerLink="/app/products/new" aria-label="Add a new product">
+      <ion-icon name="add-outline" aria-hidden="true"></ion-icon>
+      <span>New product</span>
+    </a>
+  </header>
+
+  <section class="catalog-command" aria-label="Product summary and quick filters">
+    <button
+      type="button"
+      class="catalog-command__total"
+      [class.is-active]="filter() === 'all'"
+      [attr.aria-pressed]="filter() === 'all'"
+      (click)="selectFilter('all')"
+    >
+      <span>ALL PRODUCTS</span>
+      <strong>{{ summary().total }}</strong>
+      <small>pieces in your library</small>
+    </button>
+    <span class="catalog-live" [class.is-live]="data.realtimeStatus() === 'live'" role="status">
+      <i></i>{{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}
+    </span>
+    <div class="catalog-command__stats">
+      @for (item of filters; track item.value) {
+        <button
+          type="button"
+          [class.is-active]="filter() === item.value"
+          [attr.aria-pressed]="filter() === item.value"
+          (click)="selectFilter(item.value)"
+        >
+          <ion-icon [name]="item.icon" aria-hidden="true"></ion-icon>
+          <span><strong>{{ filterCount(item.value) }}</strong><small>{{ item.label }}</small></span>
+        </button>
+      }
+    </div>
+  </section>
+
+  <section class="catalog-tools" aria-label="Find and arrange products">
+    <label class="catalog-search">
+      <ion-icon name="search-outline" aria-hidden="true"></ion-icon>
+      <input
+        type="search"
+        inputmode="search"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        aria-label="Search products"
+        placeholder="Name, SKU, category, material"
+        [value]="query()"
+        (input)="updateQuery($any($event.target).value ?? '')"
+      />
+      @if (query()) {
+        <button type="button" class="catalog-search__clear" (click)="clearQuery()" aria-label="Clear product search">
+          <ion-icon name="close-circle"></ion-icon>
+        </button>
+      }
+    </label>
+
+    <div class="catalog-controls">
+      <label class="category-select">
+        <ion-icon name="options-outline" aria-hidden="true"></ion-icon>
+        <select
+          aria-label="Filter products by category"
+          [value]="category()"
+          (change)="updateCategory($any($event.target).value ?? 'all')"
+        >
+          <option value="all">All categories</option>
+          @for (name of categoryOptions(); track name) {
+            <option [value]="name">{{ name }}</option>
+          }
+        </select>
+        <ion-icon name="chevron-down-outline" aria-hidden="true"></ion-icon>
+      </label>
+
+      <div class="view-switcher" role="group" aria-label="Product layout">
+        <button
+          type="button"
+          [class.is-active]="view() === 'compact'"
+          [attr.aria-pressed]="view() === 'compact'"
+          (click)="selectView('compact')"
+          aria-label="Compact list"
+        ><ion-icon name="list-outline"></ion-icon></button>
+        <button
+          type="button"
+          [class.is-active]="view() === 'gallery'"
+          [attr.aria-pressed]="view() === 'gallery'"
+          (click)="selectView('gallery')"
+          aria-label="Image grid"
+        ><ion-icon name="grid-outline"></ion-icon></button>
+      </div>
+    </div>
+
+    <div class="catalog-results-meta" aria-live="polite">
+      <span><strong>{{ visibleProducts().length }}</strong> {{ visibleProducts().length === 1 ? 'product' : 'products' }}</span>
+      <span>{{ category() === 'all' ? 'All categories' : category() }}</span>
+    </div>
+  </section>
+
+  @if (loading() && products().length === 0) {
+    <section class="product-loading" aria-label="Loading products"><cc-skeleton-list [count]="6"></cc-skeleton-list></section>
+  } @else if (visibleProducts().length === 0) {
+    <section class="product-empty">
+      <cc-empty-state
+        icon="cube-outline"
+        title="No matching products"
+        message="Try a different category or search phrase, or add the first piece to this collection."
+      >
+        <a class="cc-secondary-button" routerLink="/app/products/new">Add product</a>
+      </cc-empty-state>
+    </section>
+  } @else {
+    <section class="product-results" [attr.data-view]="view()" aria-label="Products">
+      @for (product of displayedProducts(); track product.id) {
+        <article class="product-card cc-reveal">
+          <button
+            class="product-card__main"
+            type="button"
+            (click)="openProduct(product)"
+            [attr.aria-label]="'Open ' + product.name"
+          >
+            <span class="product-card__image-wrap">
+              @if (primaryImage(product)) {
+                <img
+                  ccImgFallback
+                  class="product-card__image"
+                  [src]="primaryImage(product)"
+                  [alt]="product.name"
+                  loading="lazy"
+                  decoding="async"
+                />
+              } @else {
+                <span class="product-card__placeholder"><ion-icon name="image-outline"></ion-icon></span>
+              }
+              <span class="product-card__photo-count"><ion-icon name="images-outline"></ion-icon>{{ product.images.length }}</span>
+            </span>
+            <span class="product-card__copy">
+              <span class="product-card__topline">
+                <span>
+                  <strong>{{ product.name }}</strong>
+                  <small>{{ product.category }}{{ product.subcategory ? ' · ' + product.subcategory : '' }}</small>
+                </span>
+                <cc-status-pill [value]="product.status"></cc-status-pill>
+              </span>
+              <span class="product-card__details">
+                <b>{{ money(product.price) }}</b>
+                <span class="product-card__stock" [attr.data-state]="stockState(product)">
+                  <i></i>{{ product.stock_quantity }} · {{ stockState(product) }}
+                </span>
+              </span>
+              <span class="product-card__description">{{ product.description || 'No product description yet.' }}</span>
+            </span>
+            <ion-icon class="product-card__chevron" name="chevron-forward-outline" aria-hidden="true"></ion-icon>
+          </button>
+          <footer class="product-card__actions">
+            <span class="product-card__material"><ion-icon name="images-outline"></ion-icon>{{ product.images.length }}/4 photos</span>
+            <button
+              type="button"
+              [disabled]="changing().has(product.id)"
+              (click)="toggleStatus(product)"
+              [attr.aria-label]="(product.status === 'active' ? 'Hide ' : 'Publish ') + product.name"
+            >
+              @if (changing().has(product.id)) {
+                <ion-icon class="cc-spin" name="sync-outline"></ion-icon>
+              } @else {
+                <ion-icon [name]="product.status === 'active' ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
+              }
+              <span>{{ product.status === 'active' ? 'Hide' : 'Publish' }}</span>
+            </button>
+            <a [routerLink]="['/app/products', product.id]" [attr.aria-label]="'Edit ' + product.name">
+              <ion-icon name="create-outline"></ion-icon><span>Edit</span>
+            </a>
+          </footer>
+        </article>
+      }
+    </section>
+
+    @if (remainingProducts() > 0) {
+      <button type="button" class="show-more-products" (click)="showMore()">
+        <span><strong>Show more products</strong><small>{{ remainingProducts() }} remaining</small></span>
+        <ion-icon name="chevron-down-outline"></ion-icon>
+      </button>
+    }
+  }
+
+  <footer class="catalog-footer">
+    <span>Showing {{ displayedProducts().length }} of {{ visibleProducts().length }}</span>
+    <button type="button" [disabled]="syncing()" (click)="syncProducts()">
+      <ion-icon [class.cc-spin]="syncing()" name="sync-outline"></ion-icon>
+      {{ syncing() ? 'Syncing' : 'Sync catalog' }}
+    </button>
+  </footer>
+</main>

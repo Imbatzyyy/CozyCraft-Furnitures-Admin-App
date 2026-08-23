@@ -1,0 +1,610 @@
+<main class="cc-page settings-page">
+  <header class="settings-hero">
+    <div class="settings-hero__copy">
+      <p class="cc-eyebrow">STORE CONFIGURATION</p>
+      <h1>Quiet control.<br /><em>Total clarity.</em></h1>
+      <p>Every customer-facing rule and protected admin policy, synchronized with CozyCraft in realtime.</p>
+    </div>
+    <div class="settings-hero__status" [class.is-dirty]="dirty()">
+      <span class="status-orbit">
+        <i [class.is-live]="data.realtimeStatus() === 'live'"></i>
+        <ion-icon [name]="dirty() ? 'create-outline' : 'checkmark-outline'"></ion-icon>
+      </span>
+      <span>
+        <small>{{ data.realtimeStatus() === 'live' ? 'REALTIME CONNECTED' : 'SECURE SYNC' }}</small>
+        <b>{{ dirty() ? 'Unsaved edits' : 'Live configuration' }}</b>
+        <em>{{ dirty() ? 'Review before applying' : 'Everything is current' }}</em>
+      </span>
+    </div>
+  </header>
+
+  @if (!canEdit()) {
+    <aside class="permission-note" role="status">
+      <ion-icon name="lock-closed-outline"></ion-icon>
+      <span><b>Protected view</b><small>Only a Super Administrator can apply global store configuration.</small></span>
+    </aside>
+  }
+
+  @if (remoteUpdateWaiting()) {
+    <aside class="remote-note" role="status">
+      <span><ion-icon name="git-compare-outline"></ion-icon></span>
+      <div><b>A newer database version is waiting</b><small>Your local edits are untouched. Load the live version to replace them.</small></div>
+      <button type="button" (click)="useLiveVersion()">Load live</button>
+    </aside>
+  }
+
+  <div class="settings-workspace">
+    <nav class="settings-nav" aria-label="Settings sections">
+      <div class="settings-nav__rail">
+        @for (item of sections; track item.id) {
+          <button
+            type="button"
+            [class.is-active]="activeSection() === item.id"
+            [attr.aria-current]="activeSection() === item.id ? 'page' : null"
+            (click)="selectSection(item.id)"
+          >
+            <span><ion-icon [name]="item.icon"></ion-icon></span>
+            <span><b>{{ item.label }}</b><small>{{ item.caption }}</small></span>
+          </button>
+        }
+      </div>
+    </nav>
+
+    <form class="settings-panel cc-card" [formGroup]="form" (ngSubmit)="reviewAndSave()">
+      <header class="panel-heading">
+        <span class="panel-heading__icon"><ion-icon [name]="activeSectionMeta().icon"></ion-icon></span>
+        <div>
+          <p class="cc-eyebrow">{{ sectionPosition() < 10 ? '0' + sectionPosition() : sectionPosition() }} / {{ sections.length }}</p>
+          <h2>{{ activeSectionMeta().label }}</h2>
+          <p>{{ activeSectionMeta().caption }} · Storewide controls</p>
+        </div>
+        <span class="panel-heading__access"><ion-icon name="shield-checkmark-outline"></ion-icon> Superadmin</span>
+      </header>
+
+      @if (!ready()) {
+        <div class="settings-loading" role="status">
+          <ion-spinner name="crescent"></ion-spinner>
+          <span><b>Opening protected configuration</b><small>Reading the latest store and security records…</small></span>
+        </div>
+      } @else {
+        <div class="panel-content cc-reveal">
+          @switch (activeSection()) {
+            @case ('general') {
+              <section class="settings-grid" formGroupName="general">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">THE STORE FRONT DOOR</p>
+                  <h3>Identity customers can trust</h3>
+                  <p>These details anchor storefront copy, support context, and customer communications.</p>
+                </div>
+
+                <label class="settings-field" [class.has-error]="form.controls.general.controls.store_name.invalid && form.controls.general.controls.store_name.touched">
+                  <span>Store name <i>Required</i></span>
+                  <ion-input formControlName="store_name" autocomplete="organization" [maxlength]="100" placeholder="CozyCraft Furnitures"></ion-input>
+                  <small>Shown across the customer storefront and transactional surfaces.</small>
+                </label>
+
+                <label class="settings-field" [class.has-error]="form.controls.general.controls.contact_email.invalid && form.controls.general.controls.contact_email.touched">
+                  <span>Customer contact email <i>Required</i></span>
+                  <ion-input formControlName="contact_email" type="email" inputmode="email" autocomplete="email" placeholder="hello&#64;cozycraft.com"></ion-input>
+                  <small>Public contact address—not a secret or service credential.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Support phone</span>
+                  <ion-input formControlName="support_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+63 900 000 0000"></ion-input>
+                </label>
+
+                <label class="settings-field">
+                  <span>Business address</span>
+                  <ion-input formControlName="business_address" autocomplete="street-address" placeholder="Studio, street, city"></ion-input>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>Store description</span>
+                  <ion-textarea formControlName="store_description" [autoGrow]="true" [counter]="true" [maxlength]="1200" rows="4" placeholder="A concise expression of the CozyCraft point of view"></ion-textarea>
+                </label>
+              </section>
+            }
+
+            @case ('branding') {
+              <section class="settings-grid" formGroupName="branding">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">STOREFRONT VOICE</p>
+                  <h3>A measured, recognizable presence</h3>
+                  <p>Control the global announcement, maintenance state, and verified social destinations.</p>
+                </div>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="megaphone-outline"></ion-icon></span>
+                  <span><b>Announcement banner</b><small>Show one concise message above customer navigation.</small></span>
+                  <ion-toggle formControlName="announcement_enabled" aria-label="Announcement banner"></ion-toggle>
+                </label>
+
+                <label class="toggle-card is-caution">
+                  <span class="toggle-card__icon"><ion-icon name="construct-outline"></ion-icon></span>
+                  <span><b>Maintenance mode</b><small>Pause customer shopping while staff access remains available.</small></span>
+                  <ion-toggle formControlName="maintenance_mode" aria-label="Maintenance mode"></ion-toggle>
+                </label>
+
+                <label class="settings-field is-wide" [class.has-error]="form.controls.branding.controls.announcement_text.invalid && form.controls.branding.controls.announcement_text.touched">
+                  <span>Announcement text</span>
+                  <ion-input formControlName="announcement_text" [counter]="true" [maxlength]="240" placeholder="A limited collection has just arrived"></ion-input>
+                  <small>Required when the announcement banner is enabled.</small>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>Announcement destination</span>
+                  <ion-input formControlName="announcement_link" inputmode="url" placeholder="/new-arrivals or https://…"></ion-input>
+                  <small>Use a storefront path beginning with / or a full HTTPS URL.</small>
+                </label>
+
+                <div class="field-divider is-wide"><span>Social destinations</span><i></i></div>
+
+                <label class="settings-field">
+                  <span><ion-icon name="logo-facebook"></ion-icon> Facebook URL</span>
+                  <ion-input formControlName="facebook" inputmode="url" placeholder="https://facebook.com/…"></ion-input>
+                </label>
+
+                <label class="settings-field">
+                  <span><ion-icon name="logo-instagram"></ion-icon> Instagram URL</span>
+                  <ion-input formControlName="instagram" inputmode="url" placeholder="https://instagram.com/…"></ion-input>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span><ion-icon name="musical-notes-outline"></ion-icon> TikTok URL</span>
+                  <ion-input formControlName="tiktok" inputmode="url" placeholder="https://tiktok.com/…"></ion-input>
+                </label>
+              </section>
+            }
+
+            @case ('checkout') {
+              <section class="settings-grid" formGroupName="checkout">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">ORDER ECONOMICS</p>
+                  <h3>Simple thresholds, no surprises</h3>
+                  <p>All monetary values are Philippine pesos. Zero disables an optional ceiling or free-delivery threshold.</p>
+                </div>
+
+                <label class="settings-field">
+                  <span>Standard delivery fee</span>
+                  <div class="value-field"><i>₱</i><ion-input formControlName="standard_delivery_fee" type="number" inputmode="decimal" min="0" step="0.01"></ion-input><em>PHP</em></div>
+                  <small>Applied unless the free-delivery threshold is reached.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Free delivery minimum</span>
+                  <div class="value-field"><i>₱</i><ion-input formControlName="free_delivery_minimum" type="number" inputmode="decimal" min="0" step="0.01"></ion-input><em>PHP</em></div>
+                  <small>Set to 0 when free delivery is not offered automatically.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Minimum order amount</span>
+                  <div class="value-field"><i>₱</i><ion-input formControlName="minimum_order_amount" type="number" inputmode="decimal" min="0" step="0.01"></ion-input><em>PHP</em></div>
+                </label>
+
+                <label class="settings-field">
+                  <span>Maximum order amount</span>
+                  <div class="value-field"><i>₱</i><ion-input formControlName="maximum_order_amount" type="number" inputmode="decimal" min="0" step="0.01"></ion-input><em>PHP</em></div>
+                  <small>Set to 0 for no order ceiling.</small>
+                </label>
+
+                <aside class="context-card is-wide"><ion-icon name="calculator-outline"></ion-icon><span><b>Checkout validates both boundaries</b><small>A non-zero maximum must remain above the minimum order value.</small></span></aside>
+              </section>
+            }
+
+            @case ('fulfillment') {
+              <section class="settings-grid" formGroupName="fulfillment">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">DELIVERY & ORDERS</p>
+                  <h3>The promise after checkout</h3>
+                  <p>Define customer expectations, protected workflow windows, and the inventory reservation clock.</p>
+                </div>
+
+                <label class="settings-field">
+                  <span>Default delivery area</span>
+                  <ion-input formControlName="delivery_area" placeholder="Metro Manila"></ion-input>
+                </label>
+
+                <label class="settings-field" [class.has-error]="form.controls.fulfillment.controls.order_number_prefix.invalid && form.controls.fulfillment.controls.order_number_prefix.touched">
+                  <span>Order number prefix</span>
+                  <ion-input formControlName="order_number_prefix" autocapitalize="characters" [maxlength]="10" placeholder="CC" (ionInput)="normalizeOrderPrefix()"></ion-input>
+                  <small>1–10 uppercase letters, numbers, or hyphens.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Delivery estimate · minimum</span>
+                  <div class="value-field"><ion-input formControlName="estimated_delivery_days_min" type="number" inputmode="numeric" min="1" step="1"></ion-input><em>days</em></div>
+                </label>
+
+                <label class="settings-field">
+                  <span>Delivery estimate · maximum</span>
+                  <div class="value-field"><ion-input formControlName="estimated_delivery_days_max" type="number" inputmode="numeric" min="1" step="1"></ion-input><em>days</em></div>
+                </label>
+
+                <label class="settings-field">
+                  <span>Cancellation window</span>
+                  <div class="value-field"><ion-input formControlName="cancellation_window_hours" type="number" inputmode="numeric" min="0" step="1"></ion-input><em>hours</em></div>
+                  <small>How long customers may request a cancellation.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Return window</span>
+                  <div class="value-field"><ion-input formControlName="return_window_days" type="number" inputmode="numeric" min="0" step="1"></ion-input><em>days</em></div>
+                  <small>Counted from the recorded delivered event.</small>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>Checkout stock reservation</span>
+                  <div class="value-field"><ion-input formControlName="stock_reservation_minutes" type="number" inputmode="numeric" min="1" step="1"></ion-input><em>minutes</em></div>
+                  <small>Temporarily holds stock while a customer completes a protected payment session.</small>
+                </label>
+              </section>
+            }
+
+            @case ('inventory') {
+              <section class="settings-grid" formGroupName="inventory">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">AVAILABILITY</p>
+                  <h3>Keep the assortment intentional</h3>
+                  <p>Choose when the team is warned and how unavailable or discontinued pieces behave.</p>
+                </div>
+
+                <label class="settings-field is-wide">
+                  <span>Global low-stock threshold</span>
+                  <div class="value-field"><ion-input formControlName="low_stock_threshold" type="number" inputmode="numeric" min="0" step="1"></ion-input><em>units</em></div>
+                  <small>Dashboard and catalog attention lists use this shared boundary.</small>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="alert-circle-outline"></ion-icon></span>
+                  <span><b>Inventory alerts</b><small>Create operational signals when stock reaches the threshold.</small></span>
+                  <ion-toggle formControlName="inventory_alerts" aria-label="Inventory alerts"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="archive-outline"></ion-icon></span>
+                  <span><b>Auto-archive discontinued</b><small>Move discontinued pieces out of the active working catalog automatically.</small></span>
+                  <ion-toggle formControlName="auto_archive_discontinued" aria-label="Auto-archive discontinued products"></ion-toggle>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>Out-of-stock storefront behavior</span>
+                  <ion-select formControlName="out_of_stock_behavior" interface="action-sheet">
+                    <ion-select-option value="show_unavailable">Keep visible as unavailable</ion-select-option>
+                    <ion-select-option value="hide">Hide from customer listings</ion-select-option>
+                  </ion-select>
+                  <small>Direct product links may still follow storefront availability rules.</small>
+                </label>
+              </section>
+            }
+
+            @case ('payments') {
+              <section class="settings-grid" formGroupName="payments">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">PAYMENT CHOICE</p>
+                  <h3>Offer only trusted routes</h3>
+                  <p>At least one customer method must remain active. Provider credentials stay inside protected server secrets.</p>
+                </div>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="cash-outline"></ion-icon></span>
+                  <span><b>Cash on delivery</b><small>Accept payment when eligible furniture orders arrive.</small></span>
+                  <ion-toggle formControlName="cod_enabled" aria-label="Cash on delivery"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="card-outline"></ion-icon></span>
+                  <span><b>Cards via PayMongo</b><small>Use the secure hosted PayMongo card checkout.</small></span>
+                  <ion-toggle formControlName="card_enabled" aria-label="PayMongo card payments"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="phone-portrait-outline"></ion-icon></span>
+                  <span><b>GCash via PayMongo</b><small>Offer GCash in the same protected checkout flow.</small></span>
+                  <ion-toggle formControlName="gcash_enabled" aria-label="GCash payments"></ion-toggle>
+                </label>
+
+                <label class="settings-field">
+                  <span>COD maximum order</span>
+                  <div class="value-field"><i>₱</i><ion-input formControlName="cod_maximum_order" type="number" inputmode="decimal" min="0" step="0.01"></ion-input><em>PHP</em></div>
+                  <small>Set to 0 for no COD-specific ceiling.</small>
+                </label>
+              </section>
+            }
+
+            @case ('notifications') {
+              <section class="settings-grid" formGroupName="notifications">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">MESSAGING POLICY</p>
+                  <h3>Signals at the right moment</h3>
+                  <p>Control each persisted customer email event and register this device for live administrator alerts.</p>
+                </div>
+
+                <article class="push-card is-wide">
+                  <span class="push-card__mark"><ion-icon name="notifications-outline"></ion-icon><i [class.is-on]="native.pushEnabled()"></i></span>
+                  <span><small>THIS DEVICE</small><b>Native push alerts</b><em>{{ pushStatusLabel() }}</em></span>
+                  @if (native.pushEnabled()) {
+                    <button type="button" [disabled]="pushWorking()" (click)="unregisterPush()">Remove</button>
+                  } @else {
+                    <button type="button" [disabled]="pushWorking()" (click)="registerPush()">
+                      @if (pushWorking()) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="phone-portrait-outline"></ion-icon> }
+                      Register
+                    </button>
+                  }
+                </article>
+
+                <div class="field-divider is-wide"><span>Customer email events</span><i></i></div>
+
+                <label class="toggle-card compact">
+                  <span><b>Account confirmation</b><small>Welcome and identity confirmation policy.</small></span>
+                  <ion-toggle formControlName="account_confirmation" aria-label="Account confirmation emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact">
+                  <span><b>Order confirmation</b><small>New order receipt and summary policy.</small></span>
+                  <ion-toggle formControlName="order_confirmation" aria-label="Order confirmation emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact">
+                  <span><b>Payment received</b><small>Successful payment acknowledgement.</small></span>
+                  <ion-toggle formControlName="payment_received" aria-label="Payment received emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact">
+                  <span><b>Fulfillment updates</b><small>Processing, packed, and shipped milestones.</small></span>
+                  <ion-toggle formControlName="fulfillment_updates" aria-label="Fulfillment update emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact">
+                  <span><b>Delivered</b><small>Completed delivery confirmation.</small></span>
+                  <ion-toggle formControlName="delivered" aria-label="Delivered emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact">
+                  <span><b>Cancelled & refunded</b><small>Protected cancellation and refund confirmation.</small></span>
+                  <ion-toggle formControlName="cancelled_refunded" aria-label="Cancellation and refund emails"></ion-toggle>
+                </label>
+
+                <label class="toggle-card compact is-wide">
+                  <span><b>Support replies</b><small>Customer-care response notification policy.</small></span>
+                  <ion-toggle formControlName="support_replies" aria-label="Support reply emails"></ion-toggle>
+                </label>
+              </section>
+            }
+
+            @case ('reviews') {
+              <section class="settings-grid" formGroupName="reviews">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">CUSTOMER TRUST</p>
+                  <h3>Useful stories, deliberately shared</h3>
+                  <p>Shape eligibility, moderation, length, and customer-photo support without weakening order verification.</p>
+                </div>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="eye-outline"></ion-icon></span>
+                  <span><b>Require moderation</b><small>Hold new reviews for approval before publishing.</small></span>
+                  <ion-toggle formControlName="approval_required" aria-label="Require review moderation"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="checkmark-circle-outline"></ion-icon></span>
+                  <span><b>Verified purchases only</b><small>Require a delivered CozyCraft order item.</small></span>
+                  <ion-toggle formControlName="verified_purchases_only" aria-label="Verified purchases only"></ion-toggle>
+                </label>
+
+                <label class="settings-field">
+                  <span>Minimum review length</span>
+                  <div class="value-field"><ion-input formControlName="minimum_length" type="number" inputmode="numeric" min="5" max="5000" step="1"></ion-input><em>chars</em></div>
+                </label>
+
+                <label class="settings-field">
+                  <span>Maximum review length</span>
+                  <div class="value-field"><ion-input formControlName="maximum_length" type="number" inputmode="numeric" min="5" max="5000" step="1"></ion-input><em>chars</em></div>
+                </label>
+
+                <label class="toggle-card is-wide">
+                  <span class="toggle-card__icon"><ion-icon name="images-outline"></ion-icon></span>
+                  <span><b>Customer review photos</b><small>Allow image evidence and styling context with eligible reviews.</small></span>
+                  <ion-toggle formControlName="photos_enabled" aria-label="Customer review photos"></ion-toggle>
+                </label>
+              </section>
+            }
+
+            @case ('accounts') {
+              <section class="settings-grid" formGroupName="accounts">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">CUSTOMER ACCESS</p>
+                  <h3>A calm, secure first step</h3>
+                  <p>Choose the identity requirements available across customer registration, sign-in, and account security.</p>
+                </div>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="at-outline"></ion-icon></span>
+                  <span><b>Require username</b><small>Collect a unique public account name during registration.</small></span>
+                  <ion-toggle formControlName="username_required" aria-label="Require customer username"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="logo-google"></ion-icon></span>
+                  <span><b>Google sign-in</b><small>Show configured Google OAuth on customer auth screens.</small></span>
+                  <ion-toggle formControlName="google_auth_enabled" aria-label="Google sign-in"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="mail-open-outline"></ion-icon></span>
+                  <span><b>Email verification</b><small>Require confirmation before trusting a new email identity.</small></span>
+                  <ion-toggle formControlName="email_verification_required" aria-label="Require email verification"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="key-outline"></ion-icon></span>
+                  <span><b>Customer MFA</b><small>Allow authenticator enrollment from Account Security.</small></span>
+                  <ion-toggle formControlName="customer_mfa_available" aria-label="Customer MFA"></ion-toggle>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>CozyCraft password minimum</span>
+                  <div class="value-field"><ion-input formControlName="password_minimum_length" type="number" inputmode="numeric" min="8" max="72" step="1"></ion-input><em>chars</em></div>
+                  <small>Applies to CozyCraft password forms; OAuth credentials remain provider-managed.</small>
+                </label>
+              </section>
+            }
+
+            @case ('security') {
+              <section class="settings-grid" formGroupName="security">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">ADMIN PROTECTION</p>
+                  <h3>Firm boundaries for powerful access</h3>
+                  <p>MFA and the fixed mobile inactivity boundary are enforced by this workspace. Failed-login values are retained as the policy target for Supabase Auth hook configuration.</p>
+                </div>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="finger-print-outline"></ion-icon></span>
+                  <span><b>Require administrator MFA</b><small>Require AAL2 authenticator assurance for staff access.</small></span>
+                  <ion-toggle formControlName="require_admin_mfa" aria-label="Require administrator MFA"></ion-toggle>
+                </label>
+
+                <label class="toggle-card">
+                  <span class="toggle-card__icon"><ion-icon name="warning-outline"></ion-icon></span>
+                  <span><b>Security alerts</b><small>Enable events delivered by the configured server-side Auth security hook.</small></span>
+                  <ion-toggle formControlName="security_alerts_enabled" aria-label="Security alerts"></ion-toggle>
+                </label>
+
+                <div class="settings-field mobile-session-policy">
+                  <span>Mobile inactivity window</span>
+                  <div class="value-field"><strong>7 days</strong><em>rolling</em></div>
+                  <small>Activity keeps the session open. An unused device signs out securely on its next launch or resume.</small>
+                </div>
+
+                <label class="settings-field">
+                  <span>Maximum failed logins</span>
+                  <div class="value-field"><ion-input formControlName="maximum_failed_logins" type="number" inputmode="numeric" min="3" max="20" step="1"></ion-input><em>attempts</em></div>
+                  <small>Stored policy target; enforce it through the server-side Auth hook.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Lockout policy duration</span>
+                  <div class="value-field"><ion-input formControlName="lockout_minutes" type="number" inputmode="numeric" min="5" max="1440" step="1"></ion-input><em>minutes</em></div>
+                  <small>Stored policy target for the server-side Auth hook.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Security notification email</span>
+                  <ion-input formControlName="notification_email" type="email" inputmode="email" autocomplete="email" placeholder="security&#64;cozycraft.com"></ion-input>
+                  <small>Optional destination used by the configured Auth security hook.</small>
+                </label>
+              </section>
+            }
+
+            @case ('integrations') {
+              <section class="settings-grid integrations-section">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">CONNECTED SERVICES</p>
+                  <h3>Health without exposed secrets</h3>
+                  <p>The singleton security record supplies these availability flags. Credentials stay inside Supabase and protected Edge Function secrets.</p>
+                </div>
+
+                <div class="integration-list is-wide">
+                  @for (integration of integrationEntries(); track integration.key) {
+                    <article class="integration-card">
+                      <span class="integration-card__mark" [class.is-on]="integration.available"><ion-icon [name]="integration.available ? 'checkmark-outline' : 'pause-outline'"></ion-icon></span>
+                      <span><b>{{ integration.label }}</b><small>{{ integration.available ? 'Configured for server workflows' : 'Unavailable by server policy' }}</small></span>
+                      <em [class.is-on]="integration.available">{{ integration.available ? 'AVAILABLE' : 'PAUSED' }}</em>
+                    </article>
+                  } @empty {
+                    <p class="integration-empty">No integration status flags were returned by the protected settings record.</p>
+                  }
+                </div>
+
+                <article class="connection-card is-wide">
+                  <span><ion-icon name="pulse-outline"></ion-icon></span>
+                  <div><p class="cc-eyebrow">SAFE DIAGNOSTIC</p><b>Database & realtime reachability</b><small>Reads only the protected singleton ID. No keys, tokens, or service-role values are loaded.</small></div>
+                  <ion-button type="button" fill="outline" [disabled]="checking()" (click)="testConnection()">
+                    @if (checking()) { <ion-spinner name="crescent"></ion-spinner> Checking } @else { Run check }
+                  </ion-button>
+                </article>
+              </section>
+            }
+
+            @case ('reports') {
+              <section class="settings-grid" formGroupName="reports">
+                <div class="section-intro is-wide">
+                  <p class="cc-eyebrow">REPORTS & PRIVACY</p>
+                  <h3>Useful memory, kept deliberately</h3>
+                  <p>Schedule performance briefings, define recipients, and cap operational telemetry retention.</p>
+                </div>
+
+                <label class="toggle-card is-wide">
+                  <span class="toggle-card__icon"><ion-icon name="calendar-outline"></ion-icon></span>
+                  <span><b>Scheduled report briefing</b><small>Create a realtime admin notification when each performance briefing is ready.</small></span>
+                  <ion-toggle formControlName="weekly_report_enabled" aria-label="Scheduled report briefing"></ion-toggle>
+                </label>
+
+                <label class="settings-field">
+                  <span>Report frequency</span>
+                  <ion-select formControlName="frequency" interface="action-sheet">
+                    <ion-select-option value="weekly">Weekly</ion-select-option>
+                    <ion-select-option value="monthly">Monthly</ion-select-option>
+                  </ion-select>
+                </label>
+
+                <label class="settings-field">
+                  <span>Default analytics range</span>
+                  <ion-select formControlName="default_range" interface="action-sheet">
+                    <ion-select-option value="This week">This week</ion-select-option>
+                    <ion-select-option value="This month">This month</ion-select-option>
+                    <ion-select-option value="Quarter">Quarter</ion-select-option>
+                  </ion-select>
+                </label>
+
+                <label class="settings-field">
+                  <span>Reporting timezone</span>
+                  <ion-input formControlName="timezone" autocomplete="off" placeholder="Asia/Manila"></ion-input>
+                  <small>Use an IANA timezone name.</small>
+                </label>
+
+                <label class="settings-field">
+                  <span>Operational data retention</span>
+                  <div class="value-field"><ion-input formControlName="data_retention_days" type="number" inputmode="numeric" min="7" max="3650" step="1"></ion-input><em>days</em></div>
+                  <small>7 days to 10 years.</small>
+                </label>
+
+                <label class="settings-field is-wide">
+                  <span>Briefing recipients</span>
+                  <ion-textarea formControlName="recipients" [autoGrow]="true" rows="3" inputmode="email" placeholder="owner&#64;cozycraft.com&#10;operations&#64;cozycraft.com"></ion-textarea>
+                  <small>One address per line, or separate addresses with commas. Duplicates are removed on save.</small>
+                </label>
+              </section>
+            }
+          }
+        </div>
+      }
+
+      <footer class="panel-footer">
+        @if (notice(); as currentNotice) {
+          <p class="page-notice" [class.is-danger]="currentNotice.tone === 'danger'" [class.is-warning]="currentNotice.tone === 'warning'" role="status">
+            <ion-icon [name]="currentNotice.tone === 'danger' ? 'alert-circle-outline' : currentNotice.tone === 'warning' ? 'warning-outline' : 'checkmark-circle-outline'"></ion-icon>
+            <span>{{ currentNotice.message }}</span>
+          </p>
+        }
+
+        <div class="save-bar" [class.has-changes]="dirty()">
+          <span class="save-bar__state"><i></i><span><b>{{ dirty() ? 'Changes ready for review' : 'Configuration synchronized' }}</b><small>{{ dirty() ? 'Nothing changes until you apply' : 'Listening for live database updates' }}</small></span></span>
+          <span class="save-bar__actions">
+            <ion-button type="button" fill="clear" [disabled]="!dirty() || saving()" (click)="discardChanges()">Discard</ion-button>
+            <ion-button type="submit" class="cc-primary-button" [disabled]="!canEdit() || !dirty() || saving() || !ready()">
+              @if (saving()) { <ion-spinner name="crescent"></ion-spinner> Applying… } @else { Review & apply }
+            </ion-button>
+          </span>
+        </div>
+
+        <div class="settings-meta">
+          <span><small>STORE UPDATED</small><b>{{ updatedLabel(storeSource.updated_at) }}</b></span>
+          <span><small>SECURITY UPDATED</small><b>{{ updatedLabel(securitySource.updated_at) }}</b></span>
+          <span><small>LAST SECURITY ACTOR</small><b>{{ securitySource.updated_by || 'System / not recorded' }}</b></span>
+          <span><small>CONFIGURATION RECORD</small><b>{{ storeSource.id && securitySource.id ? 'Protected singleton' : 'Unavailable' }}</b></span>
+        </div>
+      </footer>
+    </form>
+  </div>
+</main>

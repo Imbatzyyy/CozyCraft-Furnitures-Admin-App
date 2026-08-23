@@ -1,0 +1,165 @@
+<main class="cc-page support-page">
+  <header class="inbox-intro">
+    <div>
+      <p class="cc-eyebrow">CUSTOMER CARE</p>
+      <h1>Conversations</h1>
+      <p>Customer questions, clearly prioritized for your team.</p>
+    </div>
+    <span class="inbox-live" [class.is-live]="data.realtimeStatus() === 'live'" role="status">
+      <i></i>{{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}
+    </span>
+  </header>
+
+  <section class="inbox-command" aria-label="Support queue summary and quick filters">
+    <button
+      type="button"
+      class="inbox-command__lead"
+      [class.is-active]="scope() === 'active'"
+      [attr.aria-pressed]="scope() === 'active'"
+      (click)="selectScope('active')"
+    >
+      <span>ACTIVE QUEUE</span>
+      <strong>{{ summary().active }}</strong>
+      <small>conversations moving</small>
+    </button>
+
+    <div class="inbox-command__metrics">
+      <button
+        type="button"
+        [class.is-active]="scope() === 'open'"
+        [attr.aria-pressed]="scope() === 'open'"
+        (click)="selectScope('open')"
+      >
+        <ion-icon name="mail-unread-outline" aria-hidden="true"></ion-icon>
+        <span><strong>{{ summary().open }}</strong><small>Open</small></span>
+      </button>
+      <button
+        type="button"
+        [class.is-active]="scope() === 'in_progress'"
+        [attr.aria-pressed]="scope() === 'in_progress'"
+        (click)="selectScope('in_progress')"
+      >
+        <ion-icon name="chatbox-ellipses-outline" aria-hidden="true"></ion-icon>
+        <span><strong>{{ summary().in_progress }}</strong><small>Working</small></span>
+      </button>
+      <button
+        type="button"
+        class="attention-metric"
+        [class.is-active]="scope() === 'attention'"
+        [attr.aria-pressed]="scope() === 'attention'"
+        (click)="selectScope('attention')"
+      >
+        <ion-icon name="alert-circle-outline" aria-hidden="true"></ion-icon>
+        <span><strong>{{ summary().attention }}</strong><small>Priority</small></span>
+      </button>
+    </div>
+  </section>
+
+  <section class="inbox-tools" aria-label="Search and filter support conversations">
+    <label class="inbox-search">
+      <ion-icon name="search-outline" aria-hidden="true"></ion-icon>
+      <input
+        type="search"
+        inputmode="search"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Ticket, customer, or message"
+        [value]="query()"
+        (input)="updateQuery($any($event.target).value ?? '')"
+        aria-label="Search support conversations"
+      />
+      @if (query()) {
+        <button type="button" (click)="clearQuery()" aria-label="Clear conversation search">
+          <ion-icon name="close-circle"></ion-icon>
+        </button>
+      }
+    </label>
+
+    <div class="scope-row" role="tablist" aria-label="Conversation status">
+      @for (option of scopeOptions; track option.value) {
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="scope() === option.value"
+          [class.is-active]="scope() === option.value"
+          (click)="selectScope(option.value)"
+        >
+          <span>{{ option.label }}</span><i>{{ scopeCount(option.value) }}</i>
+        </button>
+      }
+    </div>
+
+    <div class="inbox-results-meta" aria-live="polite">
+      <span><strong>{{ filteredTickets().length }}</strong> {{ filteredTickets().length === 1 ? 'conversation' : 'conversations' }}</span>
+      <span>{{ scopeLabel() }} · priority first</span>
+    </div>
+  </section>
+
+  @if (data.loading() && data.tickets().length === 0) {
+    <section class="inbox-loading" aria-label="Loading support conversations"><cc-skeleton-list [count]="7"></cc-skeleton-list></section>
+  } @else if (filteredTickets().length === 0) {
+    <section class="inbox-empty">
+      <cc-empty-state
+        icon="chatbubble-ellipses-outline"
+        [title]="data.tickets().length ? 'No conversations match' : 'The care queue is clear'"
+        [message]="data.tickets().length
+          ? 'Try a different status or shorten your search.'
+          : 'New customer support requests will arrive here in realtime.'"
+      ></cc-empty-state>
+    </section>
+  } @else {
+    <section class="ticket-list" aria-label="Support conversations">
+      @for (ticket of displayedTickets(); track ticket.id) {
+        <button
+          class="ticket-card cc-reveal"
+          type="button"
+          (click)="openTicket(ticket)"
+          [attr.aria-label]="'Open ' + ticket.ticket_number + ', ' + ticket.subject"
+        >
+          <span class="priority-rail" [attr.data-priority]="ticket.priority" aria-hidden="true"></span>
+          <span class="customer-avatar">{{ customerInitials(ticket) }}</span>
+          <span class="ticket-card__content">
+            <span class="ticket-card__topline">
+              <strong>{{ customerName(ticket) }}</strong>
+              <time [attr.datetime]="ticket.updated_at || ticket.created_at">{{ relativeTime(ticket.updated_at || ticket.created_at) }}</time>
+            </span>
+            <span class="ticket-card__subject">
+              <b>{{ ticket.subject }}</b>
+              @if (ticket.priority === 'high' || ticket.priority === 'urgent') {
+                <i class="priority-label" [attr.data-priority]="ticket.priority">{{ ticket.priority }}</i>
+              }
+            </span>
+            <span class="message-preview">{{ ticket.message }}</span>
+            <span class="ticket-card__meta">
+              <span class="ticket-number">{{ ticket.ticket_number }}</span>
+              <i aria-hidden="true">·</i>
+              <span>{{ categoryLabel(ticket.category) }}</span>
+              @if (ticket.attachment_paths.length > 0) {
+                <span class="attachment-count" [attr.aria-label]="ticket.attachment_paths.length + ' attachments'">
+                  <ion-icon name="attach-outline"></ion-icon>{{ ticket.attachment_paths.length }}
+                </span>
+              }
+            </span>
+            <span class="ticket-card__footer">
+              <span class="ticket-status" [attr.data-status]="ticket.status"><i></i>{{ statusLabel(ticket.status) }}</span>
+              <span class="ticket-priority" [attr.data-priority]="ticket.priority">{{ priorityLabel(ticket.priority) }}</span>
+              <span class="ticket-owner">
+                <ion-icon [name]="ticket.assigned_to ? 'person-circle-outline' : 'person-add-outline'"></ion-icon>
+                {{ assigneeLabel(ticket) }}
+              </span>
+              <ion-icon class="open-arrow" name="chevron-forward-outline" aria-hidden="true"></ion-icon>
+            </span>
+          </span>
+        </button>
+      }
+    </section>
+
+    @if (remainingTickets() > 0) {
+      <button type="button" class="show-more-tickets" (click)="showMore()">
+        <span><strong>Show more conversations</strong><small>{{ remainingTickets() }} remaining</small></span>
+        <ion-icon name="chevron-down-outline"></ion-icon>
+      </button>
+    }
+  }
+</main>

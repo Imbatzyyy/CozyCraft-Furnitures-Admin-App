@@ -1,0 +1,127 @@
+<main class="cc-page categories-page">
+  <header class="category-intro">
+    <div>
+      <p class="cc-eyebrow">COLLECTION MAP</p>
+      <h1>Categories</h1>
+      <p>Arrange the rooms customers browse.</p>
+    </div>
+    <button class="category-add" type="button" (click)="createCategory()" aria-label="Create a new category">
+      <ion-icon name="add-outline" aria-hidden="true"></ion-icon>
+      <span>New room</span>
+    </button>
+  </header>
+
+  <section class="category-command" aria-label="Category summary and quick filters">
+    <button type="button" class="category-command__total" [class.is-active]="filter() === 'all'" [attr.aria-pressed]="filter() === 'all'" (click)="selectFilter('all')">
+      <span>ALL ROOMS</span><strong>{{ summary().all }}</strong><small>storefront paths</small>
+    </button>
+
+    <span class="category-live" [class.is-live]="data.realtimeStatus() === 'live'" role="status">
+      <i></i>{{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}
+    </span>
+
+    <div class="category-command__stats">
+      <button type="button" [class.is-active]="filter() === 'live'" [attr.aria-pressed]="filter() === 'live'" (click)="selectFilter('live')">
+        <ion-icon name="eye-outline" aria-hidden="true"></ion-icon><span><strong>{{ summary().live }}</strong><small>Visible</small></span>
+      </button>
+      <button type="button" [class.is-active]="filter() === 'hidden'" [attr.aria-pressed]="filter() === 'hidden'" (click)="selectFilter('hidden')">
+        <ion-icon name="eye-off-outline" aria-hidden="true"></ion-icon><span><strong>{{ summary().hidden }}</strong><small>Hidden</small></span>
+      </button>
+      <div class="category-stat" aria-label="Assigned products">
+        <ion-icon name="cube-outline" aria-hidden="true"></ion-icon><span><strong>{{ summary().products }}</strong><small>Products</small></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="category-tools" aria-label="Find and filter categories">
+    <label class="category-search">
+      <ion-icon name="search-outline" aria-hidden="true"></ion-icon>
+      <input type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search categories" placeholder="Room or browse group" [value]="query()" (input)="updateQuery($any($event.target).value ?? '')" />
+      @if (query()) {
+        <button type="button" (click)="clearQuery()" aria-label="Clear category search"><ion-icon name="close-circle"></ion-icon></button>
+      }
+    </label>
+
+    <div class="category-filters" role="tablist" aria-label="Category visibility">
+      <button type="button" role="tab" [class.is-active]="filter() === 'all'" [attr.aria-selected]="filter() === 'all'" (click)="selectFilter('all')"><span>All</span><i>{{ filterCount('all') }}</i></button>
+      <button type="button" role="tab" [class.is-active]="filter() === 'live'" [attr.aria-selected]="filter() === 'live'" (click)="selectFilter('live')"><span>Visible</span><i>{{ filterCount('live') }}</i></button>
+      <button type="button" role="tab" [class.is-active]="filter() === 'hidden'" [attr.aria-selected]="filter() === 'hidden'" (click)="selectFilter('hidden')"><span>Hidden</span><i>{{ filterCount('hidden') }}</i></button>
+    </div>
+
+    <div class="category-results-meta" aria-live="polite">
+      <span><strong>{{ visibleRows().length }}</strong> {{ visibleRows().length === 1 ? 'room' : 'rooms' }}</span><span>Storefront order</span>
+    </div>
+  </section>
+
+  @if (loading() && rows().length === 0) {
+    <section class="category-loading" aria-label="Loading categories"><cc-skeleton-list [count]="5"></cc-skeleton-list></section>
+  } @else if (rows().length === 0) {
+    <section class="category-empty">
+      <cc-empty-state icon="albums-outline" title="Build the first room" message="Categories become the high-level customer browse paths for CozyCraft furniture.">
+        <button class="cc-secondary-button" type="button" (click)="createCategory()">Create category</button>
+      </cc-empty-state>
+    </section>
+  } @else if (visibleRows().length === 0) {
+    <section class="category-empty"><cc-empty-state icon="search-outline" title="No matching rooms" message="Try another visibility filter or shorten your search."></cc-empty-state></section>
+  } @else {
+    <section class="category-list" aria-label="Ordered product categories">
+      @for (row of visibleRows(); track row.category.id) {
+        <article class="category-card cc-reveal" [attr.data-inactive]="!row.category.active">
+          <div class="category-card__main">
+            <div class="category-card__visual">
+              @if (row.image) {
+                <img ccImgFallback [src]="row.image" [alt]="row.category.name" loading="lazy" decoding="async" />
+              } @else {
+                <span><ion-icon name="home-outline"></ion-icon></span>
+              }
+              <b>{{ row.category.sort_order.toString().padStart(2, '0') }}</b>
+            </div>
+
+            <div class="category-card__body">
+              <div class="category-card__topline">
+                <div><h2>{{ row.category.name }}</h2><p>{{ row.category.slug }}</p></div>
+                <span class="category-state" [attr.data-active]="row.category.active"><i></i>{{ row.category.active ? 'Visible' : 'Hidden' }}</span>
+              </div>
+
+              <div class="category-card__numbers">
+                <span><b>{{ row.products }}</b> products</span><i aria-hidden="true">·</i>
+                <span><b>{{ row.published }}</b> published</span><i aria-hidden="true">·</i>
+                <span><b>{{ row.subcategories.length }}</b> groups</span>
+              </div>
+
+              @if (row.subcategories.length) {
+                <div class="category-card__tags" aria-label="Browse groups">
+                  @for (subcategory of row.subcategories.slice(0, 3); track subcategory) { <span>{{ subcategory }}</span> }
+                  @if (row.subcategories.length > 3) { <span>+{{ row.subcategories.length - 3 }}</span> }
+                </div>
+              } @else {
+                <p class="category-card__empty">No browse groups yet</p>
+              }
+            </div>
+          </div>
+
+          <footer class="category-card__actions">
+            <div class="category-card__order" aria-label="Change storefront position">
+              <button type="button" [disabled]="!canMove(row.category, -1) || reordering()" (click)="move(row.category, -1)" [attr.aria-label]="'Move ' + row.category.name + ' up'"><ion-icon name="chevron-up-outline"></ion-icon></button>
+              <button type="button" [disabled]="!canMove(row.category, 1) || reordering()" (click)="move(row.category, 1)" [attr.aria-label]="'Move ' + row.category.name + ' down'"><ion-icon name="chevron-down-outline"></ion-icon></button>
+            </div>
+
+            <button class="category-card__rename" type="button" [disabled]="busy().has(row.category.id) || reordering()" (click)="renameCategory(row.category)" [attr.aria-label]="'Rename ' + row.category.name">
+              <ion-icon name="pencil-outline"></ion-icon><span>Rename</span>
+            </button>
+
+            <label class="category-card__toggle">
+              <span>{{ row.category.active ? 'On store' : 'Off store' }}</span>
+              <ion-toggle mode="ios" [checked]="row.category.active" [disabled]="busy().has(row.category.id) || reordering()" (ionChange)="toggleCategory(row.category, $event)" [attr.aria-label]="'Toggle ' + row.category.name + ' storefront visibility'"></ion-toggle>
+            </label>
+          </footer>
+        </article>
+      }
+    </section>
+  }
+
+  <aside class="category-note">
+    <ion-icon name="information-circle-outline" aria-hidden="true"></ion-icon>
+    <p><b>{{ summary().groups }} browse groups</b> are formed automatically from the products assigned to each room.</p>
+  </aside>
+</main>

@@ -1,0 +1,183 @@
+<main class="cc-page editor-page">
+    <header class="editor-head">
+      <button class="cc-icon-button" type="button" (click)="cancel()" aria-label="Back to products">
+        <ion-icon name="arrow-back-outline"></ion-icon>
+      </button>
+      <div>
+        <p class="cc-eyebrow">Catalog editor</p>
+        <h1>{{ isNew() ? 'Add product' : 'Edit product' }}</h1>
+      </div>
+      @if (!isNew() && !notFound()) {
+        <button class="cc-icon-button editor-head__delete" type="button" [disabled]="deleting()" (click)="confirmDelete()" aria-label="Delete product">
+          <ion-icon [class.cc-spin]="deleting()" [name]="deleting() ? 'sync-outline' : 'trash-outline'"></ion-icon>
+        </button>
+      }
+    </header>
+
+    @if (loading()) {
+      <section class="cc-panel cc-loading"><ion-icon class="cc-spin" name="sync-outline"></ion-icon> Loading catalog record…</section>
+    } @else if (notFound()) {
+      <section class="cc-panel missing-product">
+        <span><ion-icon name="cube-outline"></ion-icon></span>
+        <h2>Product not found</h2>
+        <p>This catalog link may be outdated, or the product was removed by another administrator.</p>
+        <button class="cc-primary-button" type="button" (click)="cancel()">Return to products</button>
+      </section>
+    } @else {
+      <div class="editor-grid">
+        <section class="cc-panel editor-section editor-section--identity">
+          <div class="cc-panel__head">
+            <div><p class="cc-eyebrow">01 · Identity</p><h2>Customer-facing details</h2></div>
+          </div>
+          <div class="editor-fields">
+            <label class="cc-field editor-span-2">
+              <span>Product name</span>
+              <input class="cc-input" [(ngModel)]="draft.name" maxlength="140" autocomplete="off" placeholder="e.g. Nara lounge chair" />
+            </label>
+            <label class="cc-field">
+              <span>Room category</span>
+              <select class="cc-select" [(ngModel)]="draft.category">
+                <option value="" disabled>Select room</option>
+                @for (category of categories; track category.id) {
+                  <option [value]="category.name">{{ category.name }}{{ category.active ? '' : ' · hidden' }}</option>
+                }
+              </select>
+            </label>
+            <label class="cc-field">
+              <span>Subcategory</span>
+              <input class="cc-input" [(ngModel)]="draft.subcategory" list="subcategory-options" maxlength="120" placeholder="e.g. Lounge chairs" />
+              <datalist id="subcategory-options">
+                @for (subcategory of subcategorySuggestions(); track subcategory) {
+                  <option [value]="subcategory"></option>
+                }
+              </datalist>
+            </label>
+            <label class="cc-field editor-span-2">
+              <span>Description</span>
+              <textarea class="cc-textarea" [(ngModel)]="draft.description" maxlength="2000" placeholder="Describe the design, comfort, use, and distinctive qualities."></textarea>
+              <small>{{ draft.description.length }}/2000 · Appears on the customer product page in realtime.</small>
+            </label>
+          </div>
+        </section>
+
+        <section class="cc-panel editor-section editor-section--commerce">
+          <div class="cc-panel__head">
+            <div><p class="cc-eyebrow">02 · Commerce</p><h2>Price, stock & publishing</h2></div>
+          </div>
+          <div class="editor-fields">
+            <label class="cc-field">
+              <span>Price · PHP</span>
+              <input class="cc-input" [(ngModel)]="draft.price" type="number" inputmode="decimal" min="0" step="0.01" />
+            </label>
+            <label class="cc-field">
+              <span>Opening stock</span>
+              <input class="cc-input" [(ngModel)]="draft.stock_quantity" type="number" inputmode="numeric" min="0" step="1" />
+              <small>Use Inventory for reasoned stock counts after setup.</small>
+            </label>
+            <label class="cc-field editor-span-2">
+              <span>Color / finish name</span>
+              <input class="cc-input" [(ngModel)]="draft.color" maxlength="120" placeholder="e.g. Natural oak" />
+            </label>
+            <fieldset class="status-field editor-span-2">
+              <legend>Publishing status</legend>
+              <div class="status-options">
+                @for (status of statuses; track status.value) {
+                  <button
+                    type="button"
+                    [attr.data-selected]="draft.status === status.value"
+                    (click)="selectStatus(status.value)"
+                  >
+                    <span class="status-options__dot"></span>
+                    <span><b>{{ status.label }}</b><small>{{ status.detail }}</small></span>
+                  </button>
+                }
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+        <section class="cc-panel editor-section editor-section--materials">
+          <div class="cc-panel__head">
+            <div><p class="cc-eyebrow">03 · Build</p><h2>Finish & materials</h2></div>
+            <button class="cc-icon-button" type="button" (click)="addMaterial()" aria-label="Add material"><ion-icon name="add-outline"></ion-icon></button>
+          </div>
+          <div class="spec-list">
+            @for (material of materials; track $index; let index = $index) {
+              <div class="material-row">
+                <span class="spec-bullet">•</span>
+                <input class="cc-input" [(ngModel)]="material.type" placeholder="Material" [attr.aria-label]="'Material type ' + (index + 1)" />
+                <input class="cc-input" [(ngModel)]="material.description" placeholder="Construction or finish detail" [attr.aria-label]="'Material detail ' + (index + 1)" />
+                <button class="cc-icon-button cc-icon-button--quiet" type="button" [disabled]="materials.length === 1" (click)="removeMaterial(index)" [attr.aria-label]="'Remove material ' + (index + 1)"><ion-icon name="close-outline"></ion-icon></button>
+              </div>
+            }
+          </div>
+        </section>
+
+        <section class="cc-panel editor-section editor-section--dimensions">
+          <div class="cc-panel__head">
+            <div><p class="cc-eyebrow">04 · Scale</p><h2>Dimensions</h2></div>
+            <button class="cc-icon-button" type="button" (click)="addDimension()" aria-label="Add dimension"><ion-icon name="add-outline"></ion-icon></button>
+          </div>
+          <div class="spec-list">
+            @for (dimension of dimensions; track $index; let index = $index) {
+              <div class="dimension-row">
+                <span class="spec-bullet">•</span>
+                <input class="cc-input" [(ngModel)]="dimension.label" placeholder="Width" [attr.aria-label]="'Measurement name ' + (index + 1)" />
+                <input class="cc-input" [(ngModel)]="dimension.value" inputmode="decimal" placeholder="120" [attr.aria-label]="'Measurement value ' + (index + 1)" />
+                <select class="cc-select" [(ngModel)]="dimension.unit" [attr.aria-label]="'Measurement unit ' + (index + 1)">
+                  <option value="">Unit</option><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="in">in</option><option value="ft">ft</option>
+                </select>
+                <button class="cc-icon-button cc-icon-button--quiet" type="button" [disabled]="dimensions.length === 1" (click)="removeDimension(index)" [attr.aria-label]="'Remove dimension ' + (index + 1)"><ion-icon name="close-outline"></ion-icon></button>
+              </div>
+            }
+          </div>
+        </section>
+
+        <section class="cc-panel editor-section editor-section--images">
+          <div class="cc-panel__head">
+            <div><p class="cc-eyebrow">05 · Gallery</p><h2>Exactly four images</h2><p>Select the lead storefront view. JPG, PNG, or WebP · 10 MB each.</p></div>
+            <span class="image-count" [attr.data-complete]="draft.images.length === 4">{{ draft.images.length }}/4</span>
+          </div>
+          <div class="image-grid">
+            @for (slot of imageSlots; track slot) {
+              @if (draft.images[slot]; as image) {
+                <article class="image-slot" [attr.data-main]="draft.main_image_index === slot">
+                  <img ccImgFallback [src]="image" [alt]="draft.name + ' photo ' + (slot + 1)" />
+                  <button class="image-slot__main" type="button" (click)="setMainImage(slot)">{{ draft.main_image_index === slot ? 'Main image' : 'Set main' }}</button>
+                  <button class="image-slot__remove" type="button" (click)="removeImage(slot)" [attr.aria-label]="'Remove photo ' + (slot + 1)"><ion-icon name="close-outline"></ion-icon></button>
+                </article>
+              } @else {
+                <label class="image-slot image-slot--empty" [attr.aria-label]="'Upload photo ' + (slot + 1)">
+                  @if (uploading()) {
+                    <ion-icon class="cc-spin" name="sync-outline"></ion-icon><span>Uploading…</span>
+                  } @else {
+                    <ion-icon name="image-outline"></ion-icon><span>Add photo {{ slot + 1 }}</span>
+                  }
+                  <input type="file" multiple accept="image/jpeg,image/png,image/webp" [disabled]="uploading()" (change)="onFilesSelected($event)" />
+                </label>
+              }
+            }
+          </div>
+          <p class="image-help" [attr.data-complete]="draft.images.length === 4">
+            <ion-icon [name]="draft.images.length === 4 ? 'checkmark-circle-outline' : 'information-circle-outline'"></ion-icon>
+            {{ draft.images.length === 4 ? 'Four-photo set complete.' : (4 - draft.images.length) + ' photo' + (4 - draft.images.length === 1 ? '' : 's') + ' remaining before save.' }}
+          </p>
+        </section>
+      </div>
+
+      @if (error()) {
+        <p class="cc-inline-error" role="alert"><ion-icon name="alert-circle-outline"></ion-icon><span>{{ error() }}</span></p>
+      }
+
+      <footer class="editor-actions">
+        @if (!isNew()) {
+          <button class="cc-danger-button editor-actions__delete" type="button" [disabled]="deleting() || saving()" (click)="confirmDelete()"><ion-icon name="trash-outline"></ion-icon>Delete</button>
+        }
+        <button class="cc-secondary-button" type="button" [disabled]="saving()" (click)="cancel()">Cancel</button>
+        <button class="cc-primary-button" type="button" [disabled]="saving() || uploading()" (click)="save()">
+          <ion-icon [class.cc-spin]="saving()" [name]="saving() ? 'sync-outline' : 'checkmark-outline'"></ion-icon>
+          {{ saving() ? 'Saving…' : (isNew() ? 'Create product' : 'Save changes') }}
+        </button>
+      </footer>
+    }
+</main>

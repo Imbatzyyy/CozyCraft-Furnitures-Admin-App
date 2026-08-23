@@ -1,0 +1,63 @@
+@import "@ionic/angular/css/core.css";
+@import "@ionic/angular/css/normalize.css";
+@import "@ionic/angular/css/structure.css";
+@import "@ionic/angular/css/typography.css";
+@import "@ionic/angular/css/display.css";
+@import "@ionic/angular/css/padding.css";
+@import "@ionic/angular/css/flex-utils.css";
+
+@font-face { font-family: "DM Sans"; src: url("/assets/fonts/dm-sans-400.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: "DM Sans"; src: url("/assets/fonts/dm-sans-500.ttf") format("truetype"); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: "DM Sans"; src: url("/assets/fonts/dm-sans-600.ttf") format("truetype"); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: "DM Sans"; src: url("/assets/fonts/dm-sans-700.ttf") format("truetype"); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: "DM Serif Display"; src: url("/assets/fonts/dm-serif-display-400.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: "DM Serif Display"; src: url("/assets/fonts/dm-serif-display-italic.ttf") format("truetype"); font-style: italic; font-weight: 400; font-display: swap; }
+
+* { box-sizing: border-box; }
+html { width: 100%; min-width: 320px; max-width: 100%; overflow-x: hidden; font-size: 16px; background: var(--cc-canvas); }
+body { width: 100%; min-width: 320px; min-height: 100dvh; max-width: 100%; overflow-x: hidden; margin: 0; background: var(--cc-canvas); color: var(--cc-ink); font-family: var(--cc-font-body); -webkit-font-smoothing: antialiased; }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+img, svg, video { max-width: 100%; }
+:where(a, button, input, textarea, select, [tabindex]):focus-visible { outline: 2px solid var(--cc-accent-deep); outline-offset: 3px; }
+
+.cc-page { width: min(100%, 1320px); min-height: 100%; margin: 0 auto; padding: 19px 14px calc(90px + env(safe-area-inset-bottom)); }
+.cc-card { border: 1px solid var(--cc-border); border-radius: var(--cc-radius); background: var(--cc-surface); box-shadow: var(--cc-shadow-sm); }
+.cc-eyebrow { margin: 0; color: var(--cc-ink-soft); font-size: 11px; font-weight: 800; letter-spacing: .16em; line-height: 1.2; text-transform: uppercase; }
+.cc-notice { display: flex; align-items: flex-start; gap: 9px; margin-top: 15px; border-radius: 14px; padding: 11px 12px; font-size: 11px; font-weight: 650; line-height: 1.45; text-align: left; }
+.cc-notice ion-icon { flex: 0 0 auto; margin-top: 1px; font-size: 16px; }
+.cc-notice--danger { background: #f3e2dc; color: #8c4d3b; }
+.cc-notice--warning { background: #f3e8d8; color: #805d3f; }
+.cc-notice--success { background: #e4ece0; color: #4f694a; }
+.cc-primary-button { --border-radius: 14px; --box-shadow: none; --background: var(--cc-ink); --color: var(--cc-canvas); min-height: 48px; margin: 0; font-size: 11px; font-weight: 760; letter-spacing: .01em; text-transform: none; }
+.cc-primary-button ion-spinner { width: 18px; height: 18px; }
+.cc-field { display: grid; gap: 7px; margin-top: 14px; color: var(--cc-ink); font-size: 11px; font-weight: 750; }
+.cc-field ion-input, .cc-field ion-textarea, .cc-field ion-select { min-height: 48px; --padding-start: 12px; --padding-end: 12px; border: 1px solid var(--cc-border); border-radius: 13px; background: var(--cc-canvas); font-size: 16px; font-weight: 500; }
+.cc-field ion-textarea { --padding-top: 11px; --padding-bottom: 11px; }
+.cc-toast { --border-radius: 15px; --box-shadow: var(--cc-shadow-lg); font-size: 12px; font-weight: 650; }
+.cc-image-fallback { object-fit: contain !important; background: var(--cc-muted); padding: 10%; opacity: .72; }
+.cc-reveal { animation: cc-enter .16s ease-out both; }
+@keyframes cc-enter { from { opacity: .72; } }
+
+/* Do not lay out and paint long off-screen admin lists during a tab change. */
+.orders-list > .order-card,
+.product-results > .product-card,
+.ticket-list > .ticket-card,
+.customers-list > .customer-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+ion-alert { --background: var(--cc-surface); --backdrop-opacity: .48; --max-width: 430px; }
+ion-alert .alert-wrapper { border-radius: 22px !important; }
+ion-alert .alert-title { font-family: var(--cc-font-display); font-size: 24px !important; letter-spacing: -.02em; }
+ion-alert .alert-message { color: var(--cc-ink-soft) !important; font-size: 12px !important; line-height: 1.6; }
+ion-alert .alert-button { font-size: 11px !important; font-weight: 750 !important; }
+ion-action-sheet { --background: var(--cc-surface); --button-color: var(--cc-ink); --color: var(--cc-ink-soft); }
+ion-modal { --background: var(--cc-surface); --border-radius: 26px 26px 0 0; }
+.cc-search-modal { --border-radius: 24px 24px 0 0; }
+
+@media (min-width: 700px) { .cc-page { padding: 25px 22px calc(98px + env(safe-area-inset-bottom)); } }
+@media (min-width: 1024px) { .cc-page { padding: 30px 32px calc(108px + env(safe-area-inset-bottom)); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }

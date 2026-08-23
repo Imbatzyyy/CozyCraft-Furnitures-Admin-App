@@ -1,0 +1,62 @@
+{
+  "name": "cozycraft-admin-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CozyCraft Furnitures mobile operations workspace for Android and iOS.",
+  "scripts": {
+    "sync:env": "node scripts/sync-environment.mjs",
+    "prestart": "npm run sync:env",
+    "start": "ng serve",
+    "prebuild": "npm run sync:env",
+    "build": "ng build --no-progress",
+    "prebuild:production": "npm run sync:env",
+    "build:production": "ng build --configuration production --no-progress",
+    "pretypecheck": "npm run sync:env",
+    "typecheck": "ngc -p tsconfig.app.json",
+    "verify": "npm run typecheck && npm run build:production",
+    "clean": "node scripts/clean-workspace.mjs",
+    "cap:sync": "npm run build:production && cap sync",
+    "android": "npm run cap:sync && cap open android",
+    "ios": "npm run cap:sync && cap open ios"
+  },
+  "dependencies": {
+    "@angular/animations": "20.3.27",
+    "@angular/common": "20.3.27",
+    "@angular/compiler": "20.3.27",
+    "@angular/core": "20.3.27",
+    "@angular/forms": "20.3.27",
+    "@angular/platform-browser": "20.3.27",
+    "@angular/platform-browser-dynamic": "20.3.27",
+    "@angular/router": "20.3.27",
+    "@aparajita/capacitor-biometric-auth": "^10.0.0",
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.5",
+    "@capacitor/push-notifications": "8.1.2",
+    "@capacitor/share": "^8.0.1",
+    "@ionic/angular": "8.8.16",
+    "@supabase/supabase-js": "2.111.0",
+    "ionicons": "8.1.0",
+    "rxjs": "7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "0.15.1"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "20.3.33",
+    "@angular/cli": "20.3.33",
+    "@angular/compiler-cli": "20.3.27",
+    "@capacitor/android": "8.5.0",
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/ios": "8.5.0",
+    "@ionic/angular-toolkit": "12.3.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

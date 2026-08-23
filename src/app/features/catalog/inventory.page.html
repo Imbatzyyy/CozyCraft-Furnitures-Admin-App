@@ -1,0 +1,157 @@
+<main class="cc-page inventory-page">
+  <section class="inventory-command" aria-labelledby="inventory-title">
+    <div class="inventory-command__status">
+      <p class="cc-eyebrow">Stock room</p>
+      <span class="inventory-live" [attr.data-state]="realtimeStatus()"><i aria-hidden="true"></i>{{ realtimeStatus() }}</span>
+    </div>
+
+    <div class="inventory-command__copy">
+      <h1 id="inventory-title">Inventory control</h1>
+      <p>See what needs attention, then adjust any quantity in one traceable update.</p>
+    </div>
+
+    <div class="inventory-metrics" aria-label="Inventory summary">
+      <div class="inventory-metric inventory-metric--focus"><span>Low stock</span><strong>{{ lowStock().length }}</strong><small>at {{ threshold() }} or below</small></div>
+      <div class="inventory-metric"><span>On hand</span><strong>{{ warehouseTotal() }}</strong><small>warehouse units</small></div>
+      <div class="inventory-metric"><span>Products</span><strong>{{ products().length }}</strong><small>tracked pieces</small></div>
+    </div>
+  </section>
+
+  <ion-segment class="inventory-tabs" [value]="view()" (ionChange)="updateView($event)" aria-label="Inventory view">
+    <ion-segment-button value="stock"><ion-icon name="cube-outline" aria-hidden="true"></ion-icon><span>Stock</span></ion-segment-button>
+    <ion-segment-button value="ledger"><ion-icon name="receipt-outline" aria-hidden="true"></ion-icon><span>Activity</span></ion-segment-button>
+  </ion-segment>
+
+  @if (view() === 'stock') {
+    <section class="stock-workspace" aria-labelledby="stock-board-title">
+      <div class="stock-tools">
+        <ion-searchbar aria-label="Search inventory" placeholder="Product, SKU or room…" [debounce]="180" [value]="query()" (ionInput)="updateQuery($event)"></ion-searchbar>
+        <div class="stock-filter" role="group" aria-label="Inventory filter">
+          <button type="button" [attr.data-active]="filter() === 'all'" (click)="filter.set('all')">All <i>{{ products().length }}</i></button>
+          <button type="button" [attr.data-active]="filter() === 'low'" (click)="filter.set('low')">Low <i>{{ lowStock().length }}</i></button>
+        </div>
+      </div>
+
+      <div class="stock-board__head">
+        <div><p class="cc-eyebrow">Live stock</p><h2 id="stock-board-title">{{ visibleProducts().length }} {{ visibleProducts().length === 1 ? 'product' : 'products' }}</h2></div>
+        <span>Lowest stock first</span>
+      </div>
+
+      @if (loading() && products().length === 0) {
+        <div class="inventory-loading"><cc-skeleton-list [count]="6"></cc-skeleton-list></div>
+      } @else if (visibleProducts().length === 0) {
+        <div class="inventory-empty"><cc-empty-state icon="cube-outline" title="No inventory matches" message="Clear the low-stock filter or try another product name."></cc-empty-state></div>
+      } @else {
+        <div class="stock-list">
+          @for (product of visibleProducts(); track product.id) {
+            <article class="stock-card" [attr.data-state]="stockState(product)">
+              <a class="stock-card__product" [routerLink]="['/app/products', product.id]">
+                <span class="stock-card__image">
+                  @if (primaryImage(product)) { <img ccImgFallback [src]="primaryImage(product)" [alt]="product.name" /> }
+                  @else { <ion-icon name="image-outline" aria-hidden="true"></ion-icon> }
+                </span>
+                <span class="stock-card__copy">
+                  <b>{{ product.name }}</b><small>{{ product.category }} · {{ product.id }}</small><cc-status-pill [value]="stockState(product)"></cc-status-pill>
+                </span>
+              </a>
+
+              <div class="stock-card__control" [attr.aria-label]="product.name + ' stock controls'">
+                <span class="stock-card__quantity"><strong>{{ product.stock_quantity }}</strong><small>on hand</small></span>
+                <button type="button" [disabled]="product.stock_quantity === 0 || adjusting().has(product.id)" (click)="openAdjustment(product, -1)" [attr.aria-label]="'Remove multiple units from ' + product.name"><ion-icon name="remove-outline" aria-hidden="true"></ion-icon></button>
+                <button type="button" [disabled]="adjusting().has(product.id)" (click)="openAdjustment(product, 1)" [attr.aria-label]="'Add multiple units to ' + product.name"><ion-icon [class.cc-spin]="adjusting().has(product.id)" [name]="adjusting().has(product.id) ? 'sync-outline' : 'add-outline'" aria-hidden="true"></ion-icon></button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+
+      <aside class="inventory-note"><ion-icon name="layers-outline" aria-hidden="true"></ion-icon><p><b>One complete adjustment.</b> Tap − or +, enter any quantity, and save one reason for the whole stock change.</p></aside>
+    </section>
+  } @else {
+    <section class="ledger-panel" aria-labelledby="ledger-title">
+      <header class="ledger-head">
+        <div><p class="cc-eyebrow">Movement ledger</p><h2 id="ledger-title">Recent activity</h2><p>Manual updates, checkout, cancellations, and returns.</p></div>
+        <span class="ledger-count">{{ movements().length }}</span>
+      </header>
+
+      @if (loading() && movements().length === 0) {
+        <div class="inventory-loading"><cc-skeleton-list [count]="6"></cc-skeleton-list></div>
+      } @else if (movements().length === 0) {
+        <div class="inventory-empty"><cc-empty-state icon="receipt-outline" title="No movements yet" message="The first stock change will appear here with its quantity and reason."></cc-empty-state></div>
+      } @else {
+        <div class="ledger-list">
+          @for (movement of movements(); track movement.id) {
+            <article class="ledger-row">
+              <span class="ledger-row__mark" [attr.data-positive]="movement.quantity_delta > 0"><ion-icon [name]="movement.quantity_delta > 0 ? 'arrow-up-outline' : 'arrow-down-outline'" aria-hidden="true"></ion-icon></span>
+              <div class="ledger-row__copy">
+                @if (productFor(movement.product_id); as product) { <a [routerLink]="['/app/products', product.id]">{{ product.name }}</a> }
+                @else { <b>{{ movement.product_id }}</b> }
+                <p>{{ movement.reason }}</p><small>{{ movement.previous_quantity }} → {{ movement.new_quantity }} on hand</small>
+              </div>
+              <div class="ledger-row__meta"><strong [attr.data-positive]="movement.quantity_delta > 0">{{ movementValue(movement.quantity_delta) }}</strong><time>{{ dateTime(movement.created_at) }}</time></div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  }
+</main>
+
+@if (activeAdjustment(); as pending) {
+  <div class="stock-adjustment" role="presentation">
+    <button class="stock-adjustment__backdrop" type="button" aria-label="Close stock adjustment" (click)="closeAdjustment()"></button>
+    <form class="stock-adjustment__sheet" role="dialog" aria-modal="true" aria-labelledby="stock-adjustment-title" (submit)="submitAdjustment($event)">
+      <span class="stock-adjustment__handle" aria-hidden="true"></span>
+      <header class="stock-adjustment__head">
+        <div><p class="cc-eyebrow">Inventory adjustment</p><h2 id="stock-adjustment-title">{{ pending.direction > 0 ? 'Receive stock' : 'Remove stock' }}</h2></div>
+        <button type="button" aria-label="Close adjustment" (click)="closeAdjustment()"><ion-icon name="close-outline" aria-hidden="true"></ion-icon></button>
+      </header>
+
+      <div class="stock-adjustment__product">
+        <span>
+          @if (primaryImage(pending.product)) { <img ccImgFallback [src]="primaryImage(pending.product)" [alt]="pending.product.name" /> }
+          @else { <ion-icon name="cube-outline" aria-hidden="true"></ion-icon> }
+        </span>
+        <div><b>{{ pending.product.name }}</b><small>{{ pending.product.category }} · {{ pending.product.stock_quantity }} currently on hand</small></div>
+      </div>
+
+      <div class="adjustment-direction" role="group" aria-label="Adjustment direction">
+        <button type="button" [attr.data-active]="pending.direction > 0" (click)="setAdjustmentDirection(1)"><ion-icon name="add-outline" aria-hidden="true"></ion-icon>Receive</button>
+        <button type="button" [attr.data-active]="pending.direction < 0" (click)="setAdjustmentDirection(-1)" [disabled]="pending.product.stock_quantity === 0"><ion-icon name="remove-outline" aria-hidden="true"></ion-icon>Remove</button>
+      </div>
+
+      <label class="adjustment-field" for="inventory-adjustment-units">
+        <span>Number of units</span>
+        <div class="adjustment-quantity">
+          <button type="button" aria-label="Decrease adjustment quantity" (click)="bumpAdjustmentUnits(-1)"><ion-icon name="remove-outline" aria-hidden="true"></ion-icon></button>
+          <input id="inventory-adjustment-units" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" required [value]="adjustmentUnits()" (input)="updateAdjustmentUnits($event)" aria-describedby="inventory-adjustment-units-help" />
+          <button type="button" aria-label="Increase adjustment quantity" (click)="bumpAdjustmentUnits(1)"><ion-icon name="add-outline" aria-hidden="true"></ion-icon></button>
+        </div>
+      </label>
+      <p id="inventory-adjustment-units-help" class="adjustment-help" [attr.data-error]="removalExceedsStock()">
+        @if (removalExceedsStock()) { Only {{ pending.product.stock_quantity }} units are available to remove. }
+        @else { Enter any whole-number quantity for this one adjustment. }
+      </p>
+
+      <div class="adjustment-preview" aria-live="polite">
+        <div><span>Current</span><strong>{{ pending.product.stock_quantity }}</strong></div>
+        <div><span>Change</span><strong>{{ adjustmentUnitsValid() ? (pending.direction > 0 ? '+' : '−') + parsedAdjustmentUnits() : '—' }}</strong></div>
+        <div><span>New stock</span><strong>{{ resultingStock() ?? '—' }}</strong></div>
+      </div>
+
+      <label class="adjustment-field" for="inventory-adjustment-reason">
+        <span>Reason</span>
+        <input id="inventory-adjustment-reason" type="text" required minlength="3" maxlength="180" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" [value]="adjustmentReason()" (input)="updateAdjustmentReason($event)" [placeholder]="pending.direction > 0 ? 'e.g. New supplier delivery' : 'e.g. Physical count correction'" />
+      </label>
+      <p class="adjustment-help"><ion-icon name="lock-closed-outline" aria-hidden="true"></ion-icon>One reason is recorded for this complete adjustment.</p>
+
+      <div class="stock-adjustment__actions">
+        <button type="button" (click)="closeAdjustment()" [disabled]="adjusting().has(pending.product.id)">Cancel</button>
+        <button class="is-primary" type="submit" [disabled]="!adjustmentReady() || adjusting().has(pending.product.id)">
+          @if (adjusting().has(pending.product.id)) { <ion-icon class="cc-spin" name="sync-outline" aria-hidden="true"></ion-icon>Saving… }
+          @else { {{ pending.direction > 0 ? 'Receive' : 'Remove' }} {{ adjustmentUnitsValid() ? parsedAdjustmentUnits() : '' }} {{ parsedAdjustmentUnits() === 1 ? 'unit' : 'units' }} }
+        </button>
+      </div>
+    </form>
+  </div>
+}

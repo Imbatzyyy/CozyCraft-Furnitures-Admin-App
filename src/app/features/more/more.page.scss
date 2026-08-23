@@ -1,0 +1,77 @@
+:host { display: block; }
+
+.more-page { max-width: 980px; }
+.more-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.more-head h1 { margin: 7px 0 0; font: 600 clamp(38px, 10vw, 54px)/.88 var(--cc-font-display); letter-spacing: -.05em; }
+.more-head > div > p:last-child { max-width: 390px; margin: 11px 0 0; color: var(--cc-ink-soft); font-size: 12px; line-height: 1.5; }
+.more-head__mark { display: grid; width: 47px; height: 47px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 16px; background: #292622; box-shadow: var(--cc-shadow-sm); }
+.more-head__mark img { width: 37px; height: 37px; object-fit: contain; filter: brightness(0) invert(1); }
+
+.workspace-pulse { display: grid; min-height: 52px; grid-template-columns: auto 1px minmax(0, 1fr); align-items: center; gap: 13px; margin-top: 20px; border: 1px solid var(--cc-border); border-radius: 17px; background: color-mix(in srgb, var(--cc-surface) 92%, #eef1e8); padding: 10px 13px; box-shadow: var(--cc-shadow-sm); }
+.workspace-pulse > span:nth-child(2) { width: 1px; height: 25px; background: var(--cc-border); }
+.workspace-pulse > span:last-child { display: grid; min-width: 0; grid-template-columns: auto 1fr; align-items: center; gap: 7px; }
+.workspace-pulse small { color: var(--cc-ink-soft); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.workspace-pulse b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-pulse__live { display: flex; align-items: center; gap: 8px; }
+.workspace-pulse__live i { width: 8px; height: 8px; border-radius: 50%; background: #b38764; box-shadow: 0 0 0 4px rgb(179 135 100 / .12); }
+.workspace-pulse__live i.is-live { background: #76936f; box-shadow: 0 0 0 4px rgb(118 147 111 / .12); }
+
+.more-group { margin-top: 24px; }
+.more-group > .cc-eyebrow { margin-left: 3px; }
+.more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+.more-grid a { position: relative; display: grid; min-width: 0; min-height: 103px; grid-template-columns: 39px minmax(0, 1fr); align-content: center; gap: 10px; overflow: hidden; border: 1px solid var(--cc-border); border-radius: 19px; background: var(--cc-surface); padding: 13px 12px; color: var(--cc-ink); text-decoration: none; box-shadow: var(--cc-shadow-sm); -webkit-tap-highlight-color: transparent; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.more-grid a:active { transform: scale(.975); border-color: color-mix(in srgb, var(--cc-accent) 42%, var(--cc-border)); box-shadow: none; }
+.more-icon { position: relative; display: grid; width: 39px; height: 39px; place-items: center; border-radius: 13px; background: var(--cc-muted); color: #4f4942; font-size: 18px; }
+.more-icon i { position: absolute; top: -6px; right: -7px; display: grid; min-width: 18px; height: 18px; place-items: center; border: 2px solid var(--cc-surface); border-radius: 999px; background: #a65d45; padding: 0 3px; color: white; font: normal 800 9px/1 var(--cc-font-body); }
+.more-grid a > span:nth-child(2) { display: grid; min-width: 0; align-content: center; gap: 5px; }
+.more-grid b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.more-grid small { display: -webkit-box; overflow: hidden; color: var(--cc-ink-soft); font-size: 10px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.more-grid a > ion-icon { position: absolute; top: 12px; right: 11px; color: #b4ada4; font-size: 12px; transform: rotate(-35deg); }
+
+.device-grid { display: grid; gap: 9px; margin-top: 10px; }
+.device-card { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--cc-border); border-radius: 19px; background: var(--cc-surface); padding: 12px; box-shadow: var(--cc-shadow-sm); }
+.device-card > span:first-child { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: var(--cc-muted); color: var(--cc-ink); font-size: 18px; }
+.device-card > span i { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border: 2px solid var(--cc-surface); border-radius: 50%; background: #a9684f; }
+.device-card > span i.is-on { background: #709069; }
+.device-card div { min-width: 0; }
+.device-card small { display: block; color: var(--cc-ink-soft); font-size: 9px; font-weight: 850; letter-spacing: .11em; }
+.device-card b { display: block; overflow: hidden; margin-top: 4px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.device-card p { margin: 3px 0 0; color: var(--cc-ink-soft); font-size: 10px; line-height: 1.35; }
+.device-card button { min-width: 64px; min-height: 40px; border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cc-canvas); color: var(--cc-ink); padding: 0 9px; font-size: 10px; font-weight: 780; }
+.device-card ion-spinner { width: 15px; height: 15px; }
+.device-security { border-color: rgb(106 130 99 / .24); background: linear-gradient(145deg, #fbfcf8, #f2f5ee); }
+.device-security > span:first-child { background: #e4ebdf; color: #60775a; }
+
+.account-card { display: grid; grid-template-columns: 43px minmax(0, 1fr) 42px; align-items: center; gap: 11px; margin-top: 24px; border-radius: 20px; background: #292622; padding: 13px; color: #f8f4ed; box-shadow: 0 12px 28px rgb(45 39 34 / .16); }
+.account-avatar { display: grid; width: 43px; height: 43px; place-items: center; border-radius: 14px; background: var(--cc-accent); color: #292622; font-size: 11px; font-weight: 850; }
+.account-card > span:nth-child(2) { min-width: 0; }
+.account-card small { display: block; color: #aaa095; font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.account-card b { display: block; overflow: hidden; margin-top: 4px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.account-card p { display: -webkit-box; overflow: hidden; margin: 4px 0 0; color: #aaa095; font-size: 10px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.account-card button { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgb(255 255 255 / .09); border-radius: 13px; background: rgb(255 255 255 / .05); color: #d4cbc1; font-size: 17px; }
+
+@media (max-width: 350px) {
+  .more-grid { gap: 7px; }
+  .more-grid a { min-height: 96px; grid-template-columns: 35px minmax(0, 1fr); gap: 8px; padding: 11px 9px; }
+  .more-icon { width: 35px; height: 35px; }
+  .more-grid b { font-size: 11px; }
+  .device-card { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 10px; }
+  .device-card > span:first-child { width: 38px; height: 38px; }
+  .device-card p { display: none; }
+}
+
+@media (min-width: 600px) {
+  .more-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .more-grid a { min-height: 108px; }
+  .device-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 900px) {
+  .more-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .more-head { align-items: center; }
+  .workspace-pulse { max-width: 560px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more-grid a { transition: none; }
+}
