@@ -1,61 +1,292 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { AlertController, IonButton, IonIcon, IonInput, IonSelect, IonSelectOption, IonToggle } from '@ionic/angular/standalone';
+import {
+  ActionSheetController,
+  AlertController,
+  IonIcon,
+  IonInput,
+  IonSpinner,
+} from '@ionic/angular/standalone';
 import { AdminAuthService } from '../../core/auth/admin-auth.service';
 import { AdminActionsService } from '../../core/data/admin-actions.service';
 import { AdminDataService } from '../../core/data/admin-data.service';
 import { AdminRole, TeamMember } from '../../core/models/admin.models';
-import { initials, shortDate, titleCase } from '../../core/utils/format';
+import { initials, shortDate } from '../../core/utils/format';
+import { EmptyStateComponent } from '../../shared/components/empty-state.component';
 import { CozyToastService } from '../../shared/components/toast.service';
-import { StatusPillComponent } from '../../shared/components/status-pill.component';
+
+type TeamFilter = 'all' | 'active' | 'administrators' | 'suspended';
+type TeamMutation = 'role' | 'status';
+
+interface PendingMemberAction {
+  memberId: string;
+  kind: TeamMutation;
+}
 
 @Component({
   selector: 'cc-team-page',
   standalone: true,
-  imports: [ReactiveFormsModule, IonButton, IonIcon, IonInput, IonSelect, IonSelectOption, IonToggle, StatusPillComponent],
+  imports: [ReactiveFormsModule, IonIcon, IonInput, IonSpinner, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <main class="cc-page team-page">
-      <header class="cc-page-heading"><div><p class="cc-eyebrow">SECURITY & ACCESS</p><h1>The team behind the craft</h1><p>Every person receives an individual, role-protected account.</p></div><button type="button" (click)="inviteOpen.set(!inviteOpen())"><ion-icon [name]="inviteOpen() ? 'close-outline' : 'person-add-outline'"></ion-icon>{{ inviteOpen() ? 'Close' : 'Invite' }}</button></header>
-      <section class="team-summary"><div><strong>{{ activeCount() }}</strong><span>active members</span></div><div><strong>{{ adminCount() }}</strong><span>administrators</span></div><div><strong>{{ suspendedCount() }}</strong><span>suspended</span></div></section>
-      @if (inviteOpen()) {
-        <form class="invite-card cc-card cc-reveal" [formGroup]="inviteForm" (ngSubmit)="invite()">
-          <div><span class="invite-icon"><ion-icon name="mail-unread-outline"></ion-icon></span><p class="cc-eyebrow">NEW TEAM MEMBER</p><h2>Send a secure invitation</h2><p>They will create their own password from the approved invitation link.</p></div>
-          <label class="cc-field"><span>Full name</span><ion-input formControlName="fullName" placeholder="Team member’s name"></ion-input></label>
-          <label class="cc-field"><span>Work email</span><ion-input formControlName="email" type="email" inputmode="email" placeholder="name&#64;cozycraft.com"></ion-input></label>
-          <label class="cc-field"><span>Workspace role</span><ion-select formControlName="role" interface="action-sheet"><ion-select-option value="staff">Staff</ion-select-option><ion-select-option value="admin">Administrator</ion-select-option><ion-select-option value="superadmin">Super Administrator</ion-select-option></ion-select></label>
-          <div class="role-preview"><b>{{ roleLabel(inviteForm.controls.role.value) }}</b><span>{{ roleDescription(inviteForm.controls.role.value) }}</span></div>
-          <ion-button type="submit" class="cc-primary-button" expand="block" [disabled]="inviteForm.invalid || working()">{{ working() ? 'Sending invitation…' : 'Send invitation' }}</ion-button>
-        </form>
-      }
-      <section class="member-list">
-        @for (member of data.team(); track member.id) {
-          <article class="member-card cc-card">
-            <div class="member-card__identity"><span>{{ initials(member.full_name || member.email) }}</span><div><b>{{ member.full_name || member.email }}</b><small>{{ member.email }}</small></div><cc-status-pill [value]="member.staff_active ? 'active' : 'suspended'"></cc-status-pill></div>
-            <div class="member-card__meta"><span><small>JOINED</small><b>{{ shortDate(member.created_at) }}</b></span><span><small>ACCOUNT</small><b>{{ member.id === auth.userId() ? 'This device' : 'Team member' }}</b></span></div>
-            <div class="member-card__controls">
-              <ion-select label="Role" labelPlacement="stacked" interface="action-sheet" [value]="member.role" [disabled]="member.id === auth.userId() || working()" (ionChange)="changeRole(member, $any($event).detail.value)"><ion-select-option value="staff">Staff</ion-select-option><ion-select-option value="admin">Administrator</ion-select-option><ion-select-option value="superadmin">Super Administrator</ion-select-option></ion-select>
-              <label class="member-toggle"><span><b>{{ member.staff_active ? 'Access enabled' : 'Access suspended' }}</b><small>{{ member.staff_active ? 'Can enter assigned tools' : 'Sessions lose workspace access' }}</small></span><ion-toggle [checked]="member.staff_active" [disabled]="member.id === auth.userId() || working()" (ionChange)="toggleStatus(member, $any($event).detail.checked)"></ion-toggle></label>
-            </div>
-          </article>
-        } @empty { <p class="team-empty">Team accounts will appear after the secure workspace loads.</p> }
-      </section>
-      <section class="role-guide"><p class="cc-eyebrow">ROLE GUIDE</p><div>@for (role of roles; track role) { <article><span><ion-icon [name]="role === 'superadmin' ? 'key-outline' : role === 'admin' ? 'shield-checkmark-outline' : 'person-outline'"></ion-icon></span><h2>{{ roleLabel(role) }}</h2><p>{{ roleDescription(role) }}</p></article> }</div></section>
-    </main>
-  `,
+  templateUrl: './team.page.html',
   styleUrl: './team.page.scss',
 })
 export class TeamPage {
-  readonly initials = initials; readonly shortDate = shortDate; readonly titleCase = titleCase; readonly roles: AdminRole[] = ['superadmin', 'admin', 'staff'];
-  readonly inviteOpen = signal(false); readonly working = signal(false);
-  readonly inviteForm = new FormGroup({ fullName: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(2), Validators.maxLength(100)] }), email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }), role: new FormControl<AdminRole>('staff', { nonNullable: true, validators: [Validators.required] }) });
-  readonly activeCount = computed(() => this.data.team().filter((member) => member.staff_active).length); readonly adminCount = computed(() => this.data.team().filter((member) => ['admin', 'superadmin'].includes(member.role) && member.staff_active).length); readonly suspendedCount = computed(() => this.data.team().filter((member) => !member.staff_active).length);
-  constructor(readonly data: AdminDataService, readonly auth: AdminAuthService, private readonly actions: AdminActionsService, private readonly alerts: AlertController, private readonly toast: CozyToastService) {}
-  roleLabel(role: AdminRole) { return ({ staff: 'Staff', admin: 'Administrator', superadmin: 'Super Administrator' })[role]; }
-  roleDescription(role: AdminRole) { return ({ staff: 'Catalog, inventory, fulfillment, reviews, and customer care.', admin: 'Adds customers, payments, reports, activity, cancellations, and refunds.', superadmin: 'Full access including team roles, security, and global store settings.' })[role]; }
-  async invite() { if (this.inviteForm.invalid || this.working()) return; this.working.set(true); const value = this.inviteForm.getRawValue(); const result = await this.actions.manageTeamMember('invite', value); this.working.set(false); if (!result.error) { this.inviteForm.reset({ fullName: '', email: '', role: 'staff' }); this.inviteOpen.set(false); } await this.toast.show(result.error ?? result.data?.message ?? 'Secure invitation sent.', result.error ? 'danger' : 'success'); }
-  async changeRole(member: TeamMember, role: AdminRole) { if (role === member.role) return; const alert = await this.alerts.create({ header: `Change ${member.full_name || member.email}’s role?`, message: role === 'superadmin' ? 'This grants full store, financial, team, and security access.' : `Their workspace will change to ${this.roleLabel(role)} access.`, buttons: [{ text: 'Keep current role', role: 'cancel' }, { text: 'Change role', handler: () => void this.runRoleChange(member.id, role) }] }); await alert.present(); }
-  private async runRoleChange(id: string, role: AdminRole) { this.working.set(true); const result = await this.actions.manageTeamMember('update-role', { userId: id, role }); this.working.set(false); await this.toast.show(result.error ?? result.data?.message ?? 'Team role updated.', result.error ? 'danger' : 'success'); }
-  async toggleStatus(member: TeamMember, active: boolean) { if (active === member.staff_active) return; const alert = await this.alerts.create({ header: active ? 'Restore workspace access?' : 'Suspend workspace access?', message: active ? `${member.full_name || member.email} can sign in again.` : `Active admin sessions for ${member.full_name || member.email} will lose access.`, buttons: [{ text: 'Cancel', role: 'cancel', handler: () => void this.data.loadTeam() }, { text: active ? 'Restore access' : 'Suspend access', role: active ? undefined : 'destructive', handler: () => void this.runStatusChange(member.id, active) }] }); await alert.present(); }
-  private async runStatusChange(id: string, active: boolean) { this.working.set(true); const result = await this.actions.manageTeamMember('set-status', { userId: id, active }); this.working.set(false); await this.toast.show(result.error ?? result.data?.message ?? 'Team access updated.', result.error ? 'danger' : 'success'); }
+  protected readonly data = inject(AdminDataService);
+  protected readonly auth = inject(AdminAuthService);
+  private readonly actions = inject(AdminActionsService);
+  private readonly alerts = inject(AlertController);
+  private readonly actionSheets = inject(ActionSheetController);
+  private readonly toast = inject(CozyToastService);
+
+  protected readonly initials = initials;
+  protected readonly shortDate = shortDate;
+  protected readonly roles: readonly AdminRole[] = ['staff', 'admin', 'superadmin'];
+  protected readonly filters: ReadonlyArray<{ value: TeamFilter; label: string }> = [
+    { value: 'all', label: 'Everyone' },
+    { value: 'active', label: 'Active' },
+    { value: 'administrators', label: 'Admins' },
+    { value: 'suspended', label: 'Suspended' },
+  ];
+
+  protected readonly query = signal('');
+  protected readonly filter = signal<TeamFilter>('all');
+  protected readonly inviteOpen = signal(false);
+  protected readonly guideOpen = signal(false);
+  protected readonly inviteWorking = signal(false);
+  protected readonly pendingAction = signal<PendingMemberAction | null>(null);
+
+  protected readonly inviteForm = new FormGroup({
+    fullName: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(2), Validators.maxLength(100)],
+    }),
+    email: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.email],
+    }),
+    role: new FormControl<AdminRole>('staff', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+  });
+
+  protected readonly activeCount = computed(() => this.data.team().filter((member) => member.staff_active).length);
+  protected readonly adminCount = computed(() => this.data.team().filter((member) => (
+    member.staff_active && (member.role === 'admin' || member.role === 'superadmin')
+  )).length);
+  protected readonly suspendedCount = computed(() => this.data.team().filter((member) => !member.staff_active).length);
+  protected readonly memberMutationWorking = computed(() => Boolean(this.pendingAction()));
+  protected readonly visibleMembers = computed(() => {
+    const query = this.query().trim().toLocaleLowerCase('en');
+    const currentFilter = this.filter();
+    const roleRank: Record<AdminRole, number> = { superadmin: 0, admin: 1, staff: 2 };
+    return this.data.team()
+      .filter((member) => {
+        if (currentFilter === 'active') return member.staff_active;
+        if (currentFilter === 'administrators') return member.role === 'admin' || member.role === 'superadmin';
+        if (currentFilter === 'suspended') return !member.staff_active;
+        return true;
+      })
+      .filter((member) => !query || `${member.full_name} ${member.email} ${member.phone} ${member.role}`
+        .toLocaleLowerCase('en')
+        .includes(query))
+      .sort((left, right) => {
+        if (left.id === this.auth.userId()) return -1;
+        if (right.id === this.auth.userId()) return 1;
+        if (left.staff_active !== right.staff_active) return left.staff_active ? -1 : 1;
+        const roleDifference = roleRank[left.role] - roleRank[right.role];
+        if (roleDifference) return roleDifference;
+        return this.displayName(left).localeCompare(this.displayName(right), 'en');
+      });
+  });
+
+  protected setQuery(value: string | null | undefined) {
+    this.query.set(value ?? '');
+  }
+
+  protected filterCount(filter: TeamFilter) {
+    if (filter === 'active') return this.activeCount();
+    if (filter === 'administrators') return this.data.team().filter((member) => (
+      member.role === 'admin' || member.role === 'superadmin'
+    )).length;
+    if (filter === 'suspended') return this.suspendedCount();
+    return this.data.team().length;
+  }
+
+  protected toggleInvite() {
+    if (this.inviteWorking()) return;
+    this.inviteOpen.update((open) => !open);
+  }
+
+  protected toggleGuide() {
+    this.guideOpen.update((open) => !open);
+  }
+
+  protected setInviteRole(role: AdminRole) {
+    this.inviteForm.controls.role.setValue(role);
+    this.inviteForm.controls.role.markAsTouched();
+  }
+
+  protected async invite() {
+    if (this.inviteForm.invalid || this.inviteWorking() || this.memberMutationWorking()) {
+      this.inviteForm.markAllAsTouched();
+      return;
+    }
+    const value = this.inviteForm.getRawValue();
+    const fullName = value.fullName.trim();
+    if (fullName.length < 2) {
+      this.inviteForm.controls.fullName.setErrors({ trimmedLength: true });
+      this.inviteForm.controls.fullName.markAsTouched();
+      return;
+    }
+    this.inviteWorking.set(true);
+    try {
+      const result = await this.actions.manageTeamMember('invite', {
+        fullName,
+        email: value.email.trim().toLocaleLowerCase('en'),
+        role: value.role,
+      });
+      if (result.error) {
+        await this.toast.show(result.error, 'danger');
+        return;
+      }
+      this.inviteForm.reset({ fullName: '', email: '', role: 'staff' });
+      this.inviteOpen.set(false);
+      await this.toast.show(result.data?.message ?? 'Secure invitation sent.', 'success');
+    } catch (error: unknown) {
+      await this.toast.show(this.errorMessage(error), 'danger');
+    } finally {
+      this.inviteWorking.set(false);
+    }
+  }
+
+  protected async openRoleMenu(member: TeamMember) {
+    if (!this.canManage(member)) return;
+    const sheet = await this.actionSheets.create({
+      header: `Role for ${this.displayName(member)}`,
+      subHeader: 'Choose an access level to review before applying.',
+      buttons: [
+        ...this.roles.map((role) => ({
+          text: `${this.roleLabel(role)}${member.role === role ? ' · Current' : ''}`,
+          icon: this.roleIcon(role),
+          cssClass: member.role === role ? 'cc-current-role' : undefined,
+          handler: () => {
+            if (member.role !== role) void this.confirmRoleChange(member, role);
+          },
+        })),
+        { text: 'Cancel', icon: 'close-outline', role: 'cancel' },
+      ],
+    });
+    await sheet.present();
+  }
+
+  protected async confirmStatusChange(member: TeamMember) {
+    if (!this.canManage(member)) return;
+    const active = !member.staff_active;
+    const alert = await this.alerts.create({
+      header: active ? 'Restore workspace access?' : 'Suspend workspace access?',
+      message: active
+        ? `${this.displayName(member)} will be able to sign in and use their assigned tools again.`
+        : `${this.displayName(member)} will lose workspace access, including any active administrative session.`,
+      buttons: [
+        { text: 'Keep current access', role: 'cancel' },
+        {
+          text: active ? 'Restore access' : 'Suspend access',
+          role: active ? undefined : 'destructive',
+          handler: () => void this.runMemberMutation(member.id, 'status', active),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  protected displayName(member: TeamMember) {
+    return member.full_name || member.email || 'Team member';
+  }
+
+  protected roleLabel(role: AdminRole) {
+    return ({ staff: 'Staff', admin: 'Administrator', superadmin: 'Super Administrator' })[role];
+  }
+
+  protected roleShortLabel(role: AdminRole) {
+    return role === 'superadmin' ? 'Superadmin' : this.roleLabel(role);
+  }
+
+  protected roleDescription(role: AdminRole) {
+    return ({
+      staff: 'Catalog, inventory, fulfillment, reviews, notifications, and customer care.',
+      admin: 'Staff tools plus customers, payments, reports, activity, cancellations, and refunds.',
+      superadmin: 'Complete workspace access including team roles, security, and global store settings.',
+    })[role];
+  }
+
+  protected roleCapabilities(role: AdminRole) {
+    return ({
+      staff: ['Catalog & stock', 'Order fulfillment', 'Reviews & inbox'],
+      admin: ['All staff tools', 'Payments & customers', 'Reports & refunds'],
+      superadmin: ['All admin tools', 'Team access', 'Security & settings'],
+    })[role];
+  }
+
+  protected roleIcon(role: AdminRole) {
+    if (role === 'superadmin') return 'key-outline';
+    if (role === 'admin') return 'shield-checkmark-outline';
+    return 'person-outline';
+  }
+
+  protected canManage(member: TeamMember) {
+    return member.id !== this.auth.userId()
+      && !this.memberMutationWorking()
+      && !this.inviteWorking();
+  }
+
+  protected isPending(member: TeamMember, kind: TeamMutation) {
+    const pending = this.pendingAction();
+    return pending?.memberId === member.id && pending.kind === kind;
+  }
+
+  protected hideAvatar(event: Event) {
+    (event.target as HTMLImageElement).hidden = true;
+  }
+
+  private async confirmRoleChange(member: TeamMember, role: AdminRole) {
+    const latest = this.data.team().find((candidate) => candidate.id === member.id);
+    if (!latest || latest.role === role || !this.canManage(latest)) return;
+    const alert = await this.alerts.create({
+      header: `Change ${this.displayName(latest)}’s role?`,
+      message: role === 'superadmin'
+        ? 'This grants complete store, financial, team, and security control. Confirm only for a trusted administrator.'
+        : `Their workspace will change from ${this.roleLabel(latest.role)} to ${this.roleLabel(role)} access.`,
+      buttons: [
+        { text: 'Keep current role', role: 'cancel' },
+        { text: 'Change role', handler: () => void this.runMemberMutation(latest.id, 'role', role) },
+      ],
+    });
+    await alert.present();
+  }
+
+  private async runMemberMutation(memberId: string, kind: TeamMutation, value: AdminRole | boolean) {
+    if (this.memberMutationWorking() || this.inviteWorking()) return;
+    this.pendingAction.set({ memberId, kind });
+    try {
+      const result = kind === 'role'
+        ? await this.actions.manageTeamMember('update-role', { userId: memberId, role: value as AdminRole })
+        : await this.actions.manageTeamMember('set-status', { userId: memberId, active: value as boolean });
+      await this.toast.show(
+        result.error ?? result.data?.message ?? (kind === 'role' ? 'Team role updated.' : 'Team access updated.'),
+        result.error ? 'danger' : 'success',
+      );
+    } catch (error: unknown) {
+      await this.toast.show(this.errorMessage(error), 'danger');
+    } finally {
+      this.pendingAction.set(null);
+    }
+  }
+
+  private errorMessage(error: unknown) {
+    if (error instanceof Error) return error.message;
+    if (error && typeof error === 'object' && 'message' in error) return String(error.message);
+    return 'The team access change could not be completed. Please try again.';
+  }
 }

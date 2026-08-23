@@ -160,7 +160,15 @@ export class AdminActionsService {
       body: { action, ...payload },
     });
     const message = this.functionError(data, error, 'The team access change could not be completed.');
-    if (!message) await this.data.loadTeam();
+    if (!message && action === 'update-role' && payload.userId && payload.role) {
+      this.data.applyTeamMemberPatch(payload.userId, { role: payload.role });
+    } else if (!message && action === 'set-status' && payload.userId && typeof payload.active === 'boolean') {
+      this.data.applyTeamMemberPatch(payload.userId, { staff_active: payload.active });
+    } else if (!message) {
+      // Invitations add a new record rather than modifying a known member, so
+      // one small directory refresh is required to display the invited user.
+      await this.data.loadTeam();
+    }
     return { data: data as { message?: string } | undefined, error: message };
   }
 

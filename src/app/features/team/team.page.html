@@ -1,0 +1,145 @@
+<main class="cc-page team-page">
+  <section class="access-hero" aria-labelledby="team-title">
+    <div class="access-hero__topline">
+      <p class="cc-eyebrow">TEAM / PROTECTED ACCESS</p>
+      <span class="access-live" [class.is-syncing]="data.realtimeStatus() !== 'live'"><i></i>{{ data.realtimeStatus() === 'live' ? 'Live policy' : 'Syncing' }}</span>
+    </div>
+    <div class="access-hero__intro">
+      <div>
+        <h1 id="team-title">Access,<br /><em>with intention.</em></h1>
+        <p>One accountable identity per person, with the smallest role needed for their work.</p>
+      </div>
+      <button class="invite-trigger" type="button" [class.is-open]="inviteOpen()" [disabled]="inviteWorking() || memberMutationWorking()" (click)="toggleInvite()">
+        <ion-icon [name]="inviteOpen() ? 'close-outline' : 'person-add-outline'" />
+        <span>{{ inviteOpen() ? 'Close' : 'Invite' }}</span>
+      </button>
+    </div>
+    <div class="access-metrics" aria-label="Team access summary">
+      <div><strong>{{ data.team().length }}</strong><span>Total identities</span></div>
+      <div><strong>{{ activeCount() }}</strong><span>Active access</span></div>
+      <div><strong>{{ adminCount() }}</strong><span>Administrators</span></div>
+      <div [class.has-alert]="suspendedCount() > 0"><strong>{{ suspendedCount() }}</strong><span>Suspended</span></div>
+    </div>
+  </section>
+
+  @if (inviteOpen()) {
+    <form class="invite-panel" [formGroup]="inviteForm" (ngSubmit)="invite()" novalidate>
+      <header>
+        <span><ion-icon name="mail-unread-outline" /></span>
+        <div><p class="cc-eyebrow">SECURE INVITATION</p><h2>Add a team identity</h2><small>They create their own password from the approved invitation.</small></div>
+      </header>
+
+      <div class="invite-fields">
+        <label class="team-field">
+          <span>Full name</span>
+          <ion-input formControlName="fullName" autocomplete="name" enterkeyhint="next" placeholder="Team member’s name" />
+          @if (inviteForm.controls.fullName.touched && inviteForm.controls.fullName.invalid) { <small>Enter a name between 2 and 100 characters.</small> }
+        </label>
+        <label class="team-field">
+          <span>Work email</span>
+          <ion-input formControlName="email" type="email" inputmode="email" autocomplete="email" enterkeyhint="next" placeholder="name&#64;cozycraft.com" />
+          @if (inviteForm.controls.email.touched && inviteForm.controls.email.invalid) { <small>Enter a valid work email address.</small> }
+        </label>
+      </div>
+
+      <fieldset class="invite-roles">
+        <legend>Starting role</legend>
+        <div>
+          @for (role of roles; track role) {
+            <button type="button" [class.is-selected]="inviteForm.controls.role.value === role" [attr.aria-pressed]="inviteForm.controls.role.value === role" [disabled]="inviteWorking()" (click)="setInviteRole(role)">
+              <ion-icon [name]="roleIcon(role)" /><span>{{ roleShortLabel(role) }}</span>
+            </button>
+          }
+        </div>
+        <p><strong>{{ roleLabel(inviteForm.controls.role.value) }}</strong>{{ roleDescription(inviteForm.controls.role.value) }}</p>
+      </fieldset>
+
+      <button class="send-invite" type="submit" [disabled]="inviteForm.invalid || inviteWorking() || memberMutationWorking()">
+        @if (inviteWorking()) { <ion-spinner name="crescent" /> } @else { <ion-icon name="send-outline" /> }
+        <span>{{ inviteWorking() ? 'Sending secure invitation…' : 'Send secure invitation' }}</span>
+      </button>
+    </form>
+  }
+
+  <section class="team-directory" aria-labelledby="directory-title">
+    <div class="directory-tools">
+      <div class="team-search">
+        <ion-icon name="search-outline" />
+        <input type="search" inputmode="search" enterkeyhint="search" autocomplete="off" aria-label="Search team members" placeholder="Name, email, phone or role…" [value]="query()" (input)="setQuery($any($event.target).value)" />
+        @if (query()) { <button type="button" aria-label="Clear team search" (click)="setQuery('')"><ion-icon name="close-circle" /></button> }
+      </div>
+      <button class="guide-trigger" type="button" [class.is-active]="guideOpen()" [attr.aria-expanded]="guideOpen()" aria-controls="role-guide" (click)="toggleGuide()">
+        <ion-icon name="shield-checkmark-outline" /><span>Roles</span>
+      </button>
+    </div>
+
+    <nav class="team-filters" aria-label="Filter team access">
+      @for (option of filters; track option.value) {
+        <button type="button" [class.is-active]="filter() === option.value" [attr.aria-pressed]="filter() === option.value" (click)="filter.set(option.value)">
+          <span>{{ option.label }}</span><b>{{ filterCount(option.value) }}</b>
+        </button>
+      }
+    </nav>
+
+    @if (guideOpen()) {
+      <section id="role-guide" class="role-guide" aria-labelledby="role-guide-title">
+        <header><div><p class="cc-eyebrow">PERMISSION GUIDE</p><h2 id="role-guide-title">Three deliberate levels</h2></div><span>Least privilege first</span></header>
+        <div class="role-guide__grid">
+          @for (role of roles; track role) {
+            <article>
+              <span class="role-guide__icon"><ion-icon [name]="roleIcon(role)" /></span>
+              <div><h3>{{ roleLabel(role) }}</h3><p>{{ roleDescription(role) }}</p></div>
+              <ul>@for (capability of roleCapabilities(role); track capability) { <li><ion-icon name="checkmark-circle-outline" />{{ capability }}</li> }</ul>
+            </article>
+          }
+        </div>
+      </section>
+    }
+
+    <header class="directory-heading">
+      <div><p class="cc-eyebrow">IDENTITY DIRECTORY</p><h2 id="directory-title">{{ visibleMembers().length }} {{ visibleMembers().length === 1 ? 'team member' : 'team members' }}</h2></div>
+      <span><i></i>Role protected</span>
+    </header>
+
+    @if (visibleMembers().length) {
+      <div class="member-grid">
+        @for (member of visibleMembers(); track member.id) {
+          <article class="member-card" [class.is-suspended]="!member.staff_active" [class.is-self]="member.id === auth.userId()">
+            <header class="member-card__identity">
+              <span class="member-avatar">
+                <i aria-hidden="true">{{ initials(displayName(member)) }}</i>
+                @if (member.avatar_url) { <img [src]="member.avatar_url" [alt]="displayName(member) + ' profile photo'" referrerpolicy="no-referrer" (error)="hideAvatar($event)" /> }
+                <b [class.is-offline]="!member.staff_active" aria-hidden="true"></b>
+              </span>
+              <span class="member-name"><strong>{{ displayName(member) }}</strong><small>{{ member.email || member.phone || 'No contact detail' }}</small></span>
+              @if (member.id === auth.userId()) { <span class="self-chip">You</span> } @else { <span class="status-chip" [class.is-suspended]="!member.staff_active"><i></i>{{ member.staff_active ? 'Active' : 'Suspended' }}</span> }
+            </header>
+
+            <div class="member-facts">
+              <span><small>Role</small><strong><ion-icon [name]="roleIcon(member.role)" />{{ roleShortLabel(member.role) }}</strong></span>
+              <span><small>Joined</small><strong>{{ shortDate(member.created_at) }}</strong></span>
+              <span><small>Account</small><strong>{{ member.id === auth.userId() ? 'This identity' : 'Team identity' }}</strong></span>
+            </div>
+
+            @if (member.id === auth.userId()) {
+              <div class="self-protection"><ion-icon name="lock-closed-outline" /><span><strong>Your current session is protected.</strong><small>Another superadmin must change this identity.</small></span></div>
+            } @else {
+              <footer class="member-actions">
+                <button type="button" [disabled]="!canManage(member)" (click)="openRoleMenu(member)">
+                  @if (isPending(member, 'role')) { <ion-spinner name="crescent" /> } @else { <ion-icon name="shield-outline" /> }
+                  <span><small>Workspace role</small><strong>{{ roleShortLabel(member.role) }}</strong></span><ion-icon name="chevron-down-outline" />
+                </button>
+                <button type="button" class="status-action" [class.is-restore]="!member.staff_active" [disabled]="!canManage(member)" (click)="confirmStatusChange(member)">
+                  @if (isPending(member, 'status')) { <ion-spinner name="crescent" /> } @else { <ion-icon [name]="member.staff_active ? 'pause-circle-outline' : 'play-circle-outline'" /> }
+                  <span>{{ member.staff_active ? 'Suspend' : 'Restore' }}</span>
+                </button>
+              </footer>
+            }
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="team-empty"><cc-empty-state icon="people-outline" title="No matching identities" message="Try another name, email, phone number, role, or access filter." /></div>
+    }
+  </section>
+</main>

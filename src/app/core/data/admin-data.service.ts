@@ -27,6 +27,7 @@ import {
   normalizeSecuritySettings,
   normalizeStoreSettings,
 } from '../models/defaults';
+import { isAdminRole } from '../utils/admin-permissions';
 import { settledOrder } from '../utils/format';
 
 const orderGraphSelect = [
@@ -93,6 +94,7 @@ export class AdminDataService {
   private readonly requestSequences = new Map<RefreshTarget, number>();
   private accessRevalidation: Promise<void> | null = null;
   private readonly refreshTimers = new Map<RefreshTarget, ReturnType<typeof setTimeout>>();
+  private readonly avatarSignedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
   private readonly productsState = signal<Product[]>([]);
   private readonly categoriesState = signal<Category[]>([]);
@@ -518,7 +520,15 @@ export class AdminDataService {
       .order('created_at');
     if (error) throw error;
     if (!this.requestIsCurrent('team', request, generation)) return;
-    this.teamState.set((data ?? []) as TeamMember[]);
+    const members = await this.withSignedAvatarUrls((data ?? []) as TeamMember[]);
+    if (!this.requestIsCurrent('team', request, generation)) return;
+    this.teamState.set(members);
+  }
+
+  applyTeamMemberPatch(memberId: string, patch: Partial<Pick<TeamMember, 'role' | 'staff_active'>>) {
+    this.teamState.update((members) => members.map((member) => (
+      member.id === memberId ? { ...member, ...patch } : member
+    )));
   }
 
   async loadActivity(
@@ -705,8 +715,8 @@ export class AdminDataService {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, () => this.scheduleRefresh('reviews', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'return_requests' }, () => this.scheduleRefresh('returns', generation))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        void this.revalidateAndReconcile(generation);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        this.handleProfileChange(payload, generation);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notifications' }, () => this.scheduleRefresh('notifications', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notification_reads' }, () => this.scheduleRefresh('notifications', generation))
@@ -813,6 +823,7 @@ export class AdminDataService {
     this.activityLogsHaveMore = true;
     this.clientErrorsHaveMore = true;
     this.teamState.set([]);
+    this.avatarSignedUrlCache.clear();
     this.settingsState.set(defaultStoreSettings);
     this.securityState.set(defaultAdminSecuritySettings);
     this.loadingState.set(false);
@@ -849,19 +860,28 @@ export class AdminDataService {
       .filter((path): path is string => Boolean(path))));
     if (paths.length === 0) return items;
 
-    const { data, error } = await this.client.storage.from('avatars').createSignedUrls(paths, 60 * 60);
-    if (error || !data) {
-      return items.map((item) => ({
-        ...item,
-        avatar_url: this.avatarObjectPath(item.avatar_url) ? null : item.avatar_url,
-      }));
+    const now = Date.now();
+    const uncachedPaths = paths.filter((path) => {
+      const cached = this.avatarSignedUrlCache.get(path);
+      return !cached || cached.expiresAt <= now + 60_000;
+    });
+    if (uncachedPaths.length) {
+      const { data, error } = await this.client.storage.from('avatars').createSignedUrls(uncachedPaths, 60 * 60);
+      if (!error && data) {
+        for (const item of data) {
+          if (item.path && item.signedUrl) {
+            this.avatarSignedUrlCache.set(item.path, {
+              url: item.signedUrl,
+              expiresAt: now + 60 * 60 * 1_000,
+            });
+          }
+        }
+      }
     }
-    const signedByPath = new Map(data
-      .filter((item) => item.signedUrl)
-      .map((item) => [item.path, item.signedUrl] as const));
+
     return items.map((item) => {
       const path = this.avatarObjectPath(item.avatar_url);
-      return { ...item, avatar_url: path ? signedByPath.get(path) ?? null : item.avatar_url };
+      return { ...item, avatar_url: path ? this.avatarSignedUrlCache.get(path)?.url ?? null : item.avatar_url };
     });
   }
 
@@ -893,10 +913,43 @@ export class AdminDataService {
         if (this.auth.signedIn()) await this.start();
         return;
       }
-      this.scheduleRefresh('customers', generation);
       if (this.auth.role() === 'superadmin') this.scheduleRefresh('team', generation);
     })().finally(() => { this.accessRevalidation = null; });
     return this.accessRevalidation;
+  }
+
+  private handleProfileChange(
+    payload: { new?: Record<string, unknown>; old?: Record<string, unknown> },
+    generation: number,
+  ) {
+    if (!this.generationIsActive(generation)) return;
+    const next = payload.new ?? {};
+    const previous = payload.old ?? {};
+    const id = typeof next['id'] === 'string'
+      ? next['id']
+      : typeof previous['id'] === 'string'
+        ? previous['id']
+        : null;
+
+    // Only the signed-in administrator's own profile can alter the current
+    // authorization boundary. Other profile changes can refresh their small,
+    // relevant collection without revalidating the session or loading both
+    // the customer and team directories.
+    if (!id || id === this.auth.userId()) {
+      void this.revalidateAndReconcile(generation);
+      return;
+    }
+
+    const nextRole = typeof next['role'] === 'string' ? next['role'] : null;
+    const knownCustomer = this.customersState().some((profile) => profile.id === id);
+    const knownTeamMember = this.teamState().some((profile) => profile.id === id);
+
+    if (this.auth.role() !== 'staff' && (knownCustomer || nextRole === 'customer')) {
+      this.scheduleRefresh('customers', generation);
+    }
+    if (this.auth.role() === 'superadmin' && (knownTeamMember || isAdminRole(nextRole))) {
+      this.scheduleRefresh('team', generation);
+    }
   }
 
   private async pagedRows<T>(
