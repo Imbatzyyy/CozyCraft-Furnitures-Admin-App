@@ -14,9 +14,32 @@
 @font-face { font-family: "DM Serif Display"; src: url("/assets/fonts/dm-serif-display-italic.ttf") format("truetype"); font-style: italic; font-weight: 400; font-display: swap; }
 
 * { box-sizing: border-box; }
-html { width: 100%; min-width: 320px; max-width: 100%; overflow-x: hidden; font-size: 16px; background: var(--cc-canvas); }
+html { width: 100%; min-width: 320px; max-width: 100%; overflow-x: hidden; font-size: 16px; background: var(--cc-canvas); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { width: 100%; min-width: 320px; min-height: 100dvh; max-width: 100%; overflow-x: hidden; margin: 0; background: var(--cc-canvas); color: var(--cc-ink); font-family: var(--cc-font-body); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; }
+
+/*
+ * iOS magnifies a page when the focused editable control resolves below 16px.
+ * Ionic inputs keep the native element in shadow DOM, so protect both the host
+ * and its exposed native part. The fixed viewport above is the native-shell
+ * fallback for WebKit controls that do not expose a shadow part.
+ */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select,
+[contenteditable="true"],
+ion-input,
+ion-textarea,
+ion-searchbar {
+  font-size: 16px !important;
+}
+
+ion-input::part(native),
+ion-textarea::part(native),
+ion-searchbar::part(input) {
+  font-size: 16px !important;
+}
+
 button, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 img, svg, video { max-width: 100%; }
