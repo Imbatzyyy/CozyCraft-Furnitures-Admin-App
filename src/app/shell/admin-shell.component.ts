@@ -136,7 +136,7 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
     { label: 'Activity', route: '/app/activity', icon: 'pulse-outline' },
     { label: 'Notifications', route: '/app/notifications', icon: 'notifications-outline', badge: () => this.data.unreadNotifications() },
     { label: 'Team access', route: '/app/team', icon: 'shield-outline' },
-    { label: 'Settings', route: '/app/settings', icon: 'options-outline' },
+    { label: 'Store settings', route: '/app/settings', icon: 'options-outline' },
     { label: 'More', route: '/app/more', icon: 'apps-outline', primary: true },
   ];
 
