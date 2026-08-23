@@ -15,8 +15,11 @@ src/app/
 ├── features/             Route-level business capabilities
 │   ├── authentication/   Sign-in, MFA, PIN setup, and unlock
 │   ├── catalog/          Products, categories, and inventory
+│   ├── content/          Pages, homepage banners, email, and newsletters
 │   ├── customers/        Customer directory and account detail
 │   ├── dashboard/        Operations overview
+│   ├── loyalty/          Member tiers, points, and redemption history
+│   ├── merchandising/    Delivery areas and customer search intent
 │   ├── notifications/    Administrator notification inbox
 │   ├── orders/           Fulfillment queue and order detail
 │   ├── reporting/        Payments, reports, exports, and activity
@@ -42,7 +45,7 @@ src/app/
 
 ## Data lifecycle
 
-`AdminDataService` owns the in-memory operational snapshot. It performs bounded initial reads, subscribes to relevant realtime changes, and reconciles state on resume or reconnect. Feature pages consume that shared state instead of independently refetching full tables. Mutations are centralized in `AdminActionsService` or a domain action service, which keeps audit, error, and refresh behavior consistent.
+`AdminDataService` owns the in-memory operational snapshot. It performs bounded initial reads, subscribes to relevant realtime changes, and reconciles state on resume or reconnect. Feature pages consume that shared state instead of independently refetching full tables. Large secondary workspaces use page-scoped services with explicit limits, pagination, short-lived caches, and detail-on-demand reads. Mutations are centralized in `AdminActionsService` or a domain action service, which keeps audit, error, and refresh behavior consistent.
 
 ## Native boundary
 

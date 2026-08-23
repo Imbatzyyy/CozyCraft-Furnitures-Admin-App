@@ -86,9 +86,11 @@ export class MorePage {
       { label: 'Products', detail: 'Create and publish pieces', icon: 'cube-outline', route: '/app/products', badge: () => 0 },
       { label: 'Categories', detail: 'Shape customer discovery', icon: 'albums-outline', route: '/app/categories', badge: () => 0 },
       { label: 'Inventory', detail: 'Atomic stock adjustments', icon: 'file-tray-stacked-outline', route: '/app/inventory', badge: () => this.data.dashboardMetrics().lowStock },
+      { label: 'Merchandising', detail: 'Delivery and discovery intent', icon: 'sparkles-outline', route: '/app/experience', badge: () => 0 },
     ]},
     { label: 'CUSTOMERS & TRUST', items: [
       { label: 'Customers', detail: 'Account and order context', icon: 'people-outline', route: '/app/customers', badge: () => 0 },
+      { label: 'Member tiers', detail: 'Points, tiers, and rewards', icon: 'ribbon-outline', route: '/app/member-tiers', badge: () => 0 },
       { label: 'Reviews', detail: 'Moderate customer stories', icon: 'star-outline', route: '/app/reviews', badge: () => this.data.dashboardMetrics().pendingReviews },
       { label: 'Support', detail: 'Resolve customer concerns', icon: 'chatbubbles-outline', route: '/app/support', badge: () => this.data.dashboardMetrics().openSupport },
       { label: 'Notifications', detail: 'Live operational signals', icon: 'notifications-outline', route: '/app/notifications', badge: () => this.data.unreadNotifications() },
@@ -101,6 +103,7 @@ export class MorePage {
     { label: 'WORKSPACE CONTROL', items: [
       { label: 'Team access', detail: 'Invite, role, suspend', icon: 'shield-outline', route: '/app/team', badge: () => 0 },
       { label: 'Store settings', detail: 'Global store configuration', icon: 'options-outline', route: '/app/settings', badge: () => 0 },
+      { label: 'Content studio', detail: 'Pages, campaigns, and email', icon: 'newspaper-outline', route: '/app/content', badge: () => 0 },
     ]},
   ];
   readonly visibleGroups = computed(() => this.groups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessRoute(this.auth.role(), item.route)) })).filter((group) => group.items.length));

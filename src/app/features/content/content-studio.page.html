@@ -1,0 +1,166 @@
+<main class="cc-page content-page">
+  <section class="studio-hero">
+    <div class="studio-hero__top">
+      <p class="cc-eyebrow">CONTENT & COMMUNICATIONS</p>
+      <button type="button" (click)="refresh()" [disabled]="loading()" aria-label="Refresh current content section"><ion-icon name="refresh-outline" [class.is-spinning]="loading()"></ion-icon></button>
+    </div>
+    <div class="studio-hero__copy">
+      <div><h1>Publishing<br><em>studio.</em></h1><p>Public information, campaigns, and customer messages in one protected mobile workspace.</p></div>
+      <span><ion-icon name="newspaper-outline"></ion-icon></span>
+    </div>
+    <footer><span><i></i> {{ heroMeta()[0] }}</span><strong>{{ heroMeta()[1] }}</strong></footer>
+  </section>
+
+  <nav class="studio-tabs" aria-label="Publishing studio sections">
+    @for (item of views; track item.id) {
+      <button type="button" [class.is-active]="view() === item.id" (click)="selectView(item.id)"><ion-icon [name]="item.icon"></ion-icon><span>{{ item.label }}</span></button>
+    }
+  </nav>
+
+  @if (loading()) {
+    <section class="studio-loading"><span><ion-spinner name="crescent"></ion-spinner></span><div><b>Opening {{ heroMeta()[0].toLowerCase() }}</b><small>Only this section’s protected records are being loaded.</small></div></section>
+  } @else if (view() === 'pages') {
+    <header class="studio-heading"><div><p>PUBLIC PAGES</p><h2>Information customers rely on</h2></div><span>{{ pages().length }} pages</span></header>
+    @if (pages().length === 0) {
+      <cc-empty-state icon="document-text-outline" title="No content pages found" message="Public information pages will appear here after they are initialized in the connected database." />
+    } @else {
+      <section class="editor-list">
+        @for (page of pages(); track page.slug; let index = $index) {
+          <article class="editor-card">
+            <header><div><small>/{{ page.slug }}</small><h2>{{ page.title || 'Untitled page' }}</h2></div><label class="publish-toggle"><span>{{ page.published ? 'Published' : 'Draft' }}</span><ion-toggle [checked]="page.published" (ionChange)="updatePage(index, { published: $event.detail.checked })" [attr.aria-label]="'Publish ' + page.slug"></ion-toggle></label></header>
+            <div class="field-grid">
+              <label><span>Eyebrow</span><input [value]="page.eyebrow" maxlength="80" (input)="updatePage(index, { eyebrow: inputValue($event) })" /></label>
+              <label><span>Page title</span><input [value]="page.title" maxlength="160" (input)="updatePage(index, { title: inputValue($event) })" /></label>
+              <label class="wide"><span>Summary</span><textarea rows="3" maxlength="600" [value]="page.summary" (input)="updatePage(index, { summary: inputValue($event) })"></textarea></label>
+              <label class="wide"><span>Page body</span><textarea rows="6" maxlength="6000" [value]="page.body" (input)="updatePage(index, { body: inputValue($event) })"></textarea></label>
+            </div>
+            <footer><span>Updated {{ dateTime(page.updated_at) }}</span><button type="button" (click)="savePage(page)" [disabled]="!!busy()">@if (busy() === 'page-' + page.slug) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="cloud-upload-outline"></ion-icon> } Save page</button></footer>
+          </article>
+        }
+      </section>
+    }
+  } @else if (view() === 'homepage') {
+    <header class="studio-heading"><div><p>HOMEPAGE CAMPAIGNS</p><h2>Storefront first impressions</h2></div><button type="button" class="heading-action" (click)="addBanner()"><ion-icon name="add-outline"></ion-icon> New</button></header>
+    @if (banners().length === 0) {
+      <cc-empty-state icon="images-outline" title="No homepage campaigns" message="Create the first scheduled storefront banner with the New button." />
+    } @else {
+      <section class="editor-list banner-list">
+        @for (banner of banners(); track banner.id; let index = $index) {
+          <article class="editor-card banner-card" [attr.id]="'banner-' + banner.id">
+            <div class="banner-preview">
+              @if (banner.image_url) { <img [src]="banner.image_url" [alt]="banner.title || 'Homepage campaign preview'" loading="lazy" (error)="hideImage($event)" /> }
+              <span></span><div><small>{{ banner.eyebrow || 'COZYCRAFT EDIT' }}</small><h2>{{ banner.title || 'New homepage story' }}</h2><p>{{ banner.subtitle || 'Supporting campaign message' }}</p></div>
+              <b [class.is-live]="banner.active"><i></i>{{ banner.active ? 'Eligible' : 'Hidden' }}</b>
+            </div>
+            <div class="field-grid">
+              <label><span>Eyebrow</span><input [value]="banner.eyebrow" maxlength="80" (input)="updateBanner(index, { eyebrow: inputValue($event) })" /></label>
+              <label><span>Headline</span><input [value]="banner.title" maxlength="160" (input)="updateBanner(index, { title: inputValue($event) })" /></label>
+              <label class="wide"><span>Supporting text</span><textarea rows="3" maxlength="500" [value]="banner.subtitle" (input)="updateBanner(index, { subtitle: inputValue($event) })"></textarea></label>
+              <label class="wide"><span>Secure image URL</span><input type="url" inputmode="url" [value]="banner.image_url" placeholder="https://…" (input)="updateBanner(index, { image_url: inputValue($event) })" /></label>
+              <label><span>Button label</span><input [value]="banner.cta_label" maxlength="60" (input)="updateBanner(index, { cta_label: inputValue($event) })" /></label>
+              <label><span>Action path</span><input [value]="banner.cta_path" maxlength="240" placeholder="/new-arrivals" (input)="updateBanner(index, { cta_path: inputValue($event) })" /></label>
+              <label><span>Starts · Philippine time</span><input type="datetime-local" [value]="localDateTime(banner.starts_at)" (input)="updateBanner(index, { starts_at: localToIso(inputValue($event)) })" /></label>
+              <label><span>Ends · Philippine time</span><input type="datetime-local" [value]="localDateTime(banner.ends_at)" (input)="updateBanner(index, { ends_at: localToIso(inputValue($event)) })" /></label>
+              <label><span>Sort order</span><input type="number" inputmode="numeric" [value]="banner.sort_order" (input)="updateBanner(index, { sort_order: numberValue($event) })" /></label>
+              <label class="switch-field"><span><b>Campaign eligible</b><small>Scheduling rules still apply.</small></span><ion-toggle [checked]="banner.active" (ionChange)="updateBanner(index, { active: $event.detail.checked })" [attr.aria-label]="'Enable ' + (banner.title || 'banner')"></ion-toggle></label>
+            </div>
+            <footer><button type="button" class="remove-action" (click)="removeBanner(banner)" [disabled]="!!busy()"><ion-icon name="trash-outline"></ion-icon> Remove</button><button type="button" (click)="saveBanner(banner)" [disabled]="!!busy()">@if (busy() === 'banner-' + banner.id) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="cloud-upload-outline"></ion-icon> } Save campaign</button></footer>
+          </article>
+        }
+      </section>
+    }
+  } @else if (view() === 'newsletters') {
+    @if (newsletter(); as workspace) {
+      <section class="newsletter-metrics">
+        <span><small>ACTIVE READERS</small><b>{{ workspace.counts.active }}</b></span>
+        <span><small>AWAITING</small><b>{{ workspace.counts.pending }}</b></span>
+        <span><small>UNSUBSCRIBED</small><b>{{ workspace.counts.unsubscribed }}</b></span>
+        <span><small>CAMPAIGNS</small><b>{{ workspace.campaigns.length }}</b></span>
+      </section>
+
+      <section class="newsletter-layout">
+        <article class="editor-card newsletter-editor">
+          <header><div><small>CAMPAIGN EDITOR</small><h2>{{ newsletterDraft().id ? 'Refine the saved draft' : 'Create an occasional edit' }}</h2></div>@if (newsletterDraft().id) { <button type="button" class="text-action" (click)="newNewsletter()">New draft</button> }</header>
+          <div class="field-grid">
+            <label><span>Internal campaign name</span><input [value]="newsletterDraft().internal_name" maxlength="120" (input)="updateNewsletter({ internal_name: inputValue($event) })" /></label>
+            <label><span>Email subject</span><input [value]="newsletterDraft().subject" maxlength="120" (input)="updateNewsletter({ subject: inputValue($event) })" /></label>
+            <label><span>Inbox preview text</span><input [value]="newsletterDraft().preheader" maxlength="180" (input)="updateNewsletter({ preheader: inputValue($event) })" /></label>
+            <label><span>Customer-facing heading</span><input [value]="newsletterDraft().heading" maxlength="160" (input)="updateNewsletter({ heading: inputValue($event) })" /></label>
+            <label class="wide"><span>Message</span><textarea rows="6" maxlength="4000" [value]="newsletterDraft().body" (input)="updateNewsletter({ body: inputValue($event) })"></textarea></label>
+            <label><span>Action label</span><input [value]="newsletterDraft().cta_label" maxlength="60" (input)="updateNewsletter({ cta_label: inputValue($event) })" /></label>
+            <label><span>CozyCraft action path</span><input [value]="newsletterDraft().cta_path" maxlength="240" (input)="updateNewsletter({ cta_path: inputValue($event) })" /></label>
+          </div>
+
+          <section class="product-picker">
+            <header><div><b>Featured products</b><small>Choose up to four active pieces.</small></div><span>{{ newsletterDraft().product_ids.length }}/4</span></header>
+            <div>
+              @for (product of workspace.products; track product.id) {
+                <button type="button" [class.is-selected]="newsletterDraft().product_ids.includes(product.id)" [disabled]="!newsletterDraft().product_ids.includes(product.id) && newsletterDraft().product_ids.length >= 4" (click)="toggleNewsletterProduct(product.id)">
+                  <span>@if (product.image_url) { <img [src]="product.image_url" alt="" loading="lazy" (error)="hideImage($event)" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><div><b>{{ product.name }}</b><small>{{ product.category }} · {{ money(product.price) }}</small></div><ion-icon [name]="newsletterDraft().product_ids.includes(product.id) ? 'checkmark-circle' : 'add-circle-outline'"></ion-icon>
+                </button>
+              }
+            </div>
+          </section>
+          <footer><span>Drafts are also kept locally until scheduled.</span><div><button type="button" class="secondary-action" (click)="sendTest()" [disabled]="!!busy()">@if (busy() === 'newsletter-test') { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="paper-plane-outline"></ion-icon> } Test</button><button type="button" (click)="saveNewsletter()" [disabled]="!!busy()">@if (busy() === 'newsletter-save') { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="save-outline"></ion-icon> } Save draft</button></div></footer>
+        </article>
+
+        <aside class="newsletter-side">
+          <section class="newsletter-preview">
+            <small>LIVE PREVIEW</small><h2>{{ newsletterDraft().heading || 'A quieter edit for considered homes.' }}</h2><p>{{ newsletterDraft().body || 'Your customer-facing campaign message will appear here.' }}</p>
+            @if (selectedProducts().length) { <div class="preview-products">@for (product of selectedProducts(); track product.id) { <span>@if (product.image_url) { <img [src]="product.image_url" alt="" loading="lazy" /> }<b>{{ product.name }}</b></span> }</div> }
+            <b class="preview-cta">{{ newsletterDraft().cta_label || 'Explore' }}</b>
+          </section>
+          <section class="delivery-controls">
+            <div><p class="cc-eyebrow">DELIVERY CONTROLS</p><h2>Send deliberately</h2><p>Subscriber addresses never leave the protected server function.</p></div>
+            <label><span>Test recipient</span><input type="email" inputmode="email" [value]="testEmail()" (input)="testEmail.set(inputValue($event))" /></label>
+            <label><span>Schedule · Philippine time</span><input type="datetime-local" [value]="scheduledAt()" (input)="scheduledAt.set(inputValue($event))" /></label>
+            <div><button type="button" class="secondary-action" (click)="scheduleNewsletter(false)" [disabled]="!!busy()">Schedule</button><button type="button" (click)="scheduleNewsletter(true)" [disabled]="!!busy()">@if (busy() === 'newsletter-schedule') { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="send-outline"></ion-icon> } Send now</button></div>
+          </section>
+        </aside>
+      </section>
+
+      <header class="studio-heading"><div><p>CAMPAIGN HISTORY</p><h2>Protected delivery totals</h2></div><span>{{ workspace.campaigns.length }} campaigns</span></header>
+      @if (workspace.campaigns.length === 0) {
+        <cc-empty-state icon="mail-unread-outline" title="No newsletter campaigns yet" message="Create and save the first editorial campaign above." />
+      } @else {
+        <section class="campaign-list">
+          @for (campaign of workspace.campaigns; track campaign.id) {
+            <article><header><div><small>{{ dateTime(campaign.created_at) }}</small><h2>{{ campaign.internal_name }}</h2><p>{{ campaign.subject }}</p></div><span [class]="'campaign-status campaign-status--' + campaign.status"><i></i>{{ titleCase(campaign.status) }}</span></header><div class="campaign-counts"><span><b>{{ campaign.recipient_count }}</b><small>Recipients</small></span><span><b>{{ campaign.sent_count }}</b><small>Sent</small></span><span><b>{{ campaign.failed_count }}</b><small>Failed</small></span></div>@if (campaign.scheduled_at || campaign.sent_at) { <p class="campaign-time"><ion-icon name="time-outline"></ion-icon>{{ campaign.sent_at ? 'Sent ' + dateTime(campaign.sent_at) : 'Scheduled ' + dateTime(campaign.scheduled_at) }}</p> }<footer>@if (isCampaignEditable(campaign)) { <button type="button" class="secondary-action" (click)="editCampaign(campaign)"><ion-icon name="create-outline"></ion-icon> Edit</button> }@if (isCampaignCancellable(campaign)) { <button type="button" class="remove-action" (click)="cancelCampaign(campaign)" [disabled]="!!busy()">@if (busy() === 'campaign-' + campaign.id) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="close-circle-outline"></ion-icon> } Cancel</button> }</footer></article>
+          }
+        </section>
+      }
+    } @else {
+      <cc-empty-state icon="cloud-offline-outline" title="Newsletter workspace unavailable" message="Pull to refresh or check the protected newsletter Edge Function configuration." />
+    }
+  } @else if (view() === 'templates') {
+    <header class="studio-heading"><div><p>TRANSACTIONAL EMAIL</p><h2>Messages tied to customer events</h2></div><span>{{ templates().length }} templates</span></header>
+    @if (templates().length === 0) {
+      <cc-empty-state icon="code-slash-outline" title="No templates configured" message="Transactional email templates will appear here after database initialization." />
+    } @else {
+      <section class="editor-list">
+        @for (template of templates(); track template.event_type; let index = $index) {
+          <article class="editor-card">
+            <header><div><small>{{ titleCase(template.event_type) }}</small><h2>{{ template.heading }}</h2></div><label class="publish-toggle"><span>{{ template.enabled ? 'Enabled' : 'Paused' }}</span><ion-toggle [checked]="template.enabled" (ionChange)="updateTemplate(index, { enabled: $event.detail.checked })" [attr.aria-label]="'Enable ' + template.event_type"></ion-toggle></label></header>
+            <div class="field-grid"><label class="wide"><span>Email subject</span><input [value]="template.subject_template" (input)="updateTemplate(index, { subject_template: inputValue($event) })" /></label><label class="wide"><span>Heading</span><input [value]="template.heading" (input)="updateTemplate(index, { heading: inputValue($event) })" /></label><label class="wide"><span>Message</span><textarea rows="5" [value]="template.body_template" (input)="updateTemplate(index, { body_template: inputValue($event) })"></textarea></label></div>
+            <p class="variable-note"><ion-icon name="information-circle-outline"></ion-icon>Supported variables include {{ variableTokens }}.</p>
+            <footer><span>Updated {{ dateTime(template.updated_at) }}</span><button type="button" (click)="saveTemplate(template)" [disabled]="!!busy()">@if (busy() === 'template-' + template.event_type) { <ion-spinner name="crescent"></ion-spinner> } @else { <ion-icon name="save-outline"></ion-icon> } Save template</button></footer>
+          </article>
+        }
+      </section>
+    }
+  } @else {
+    <header class="studio-heading"><div><p>EMAIL DELIVERY LOG</p><h2>Recent transactional attempts</h2></div><span>{{ logsTotal() }} records</span></header>
+    @if (logs().length === 0) {
+      <cc-empty-state icon="time-outline" title="No email attempts recorded" message="Transactional email delivery results will appear here as customer events occur." />
+    } @else {
+      <section class="log-list">
+        @for (log of logs(); track log.id) {
+          <article><span class="log-icon" [class.has-error]="log.status !== 'sent'"><ion-icon [name]="log.status === 'sent' ? 'checkmark-outline' : 'alert-outline'"></ion-icon></span><div><b>{{ titleCase(log.event_type) }}</b><small>{{ log.recipient }}</small><p>{{ titleCase(log.entity_type) }} {{ log.entity_id || '' }} · {{ dateTime(log.created_at) }}</p>@if (log.error_message) { <em>{{ log.error_message }}</em> } @else if (log.provider_message_id) { <em>{{ log.provider_message_id }}</em> }</div><span class="log-status" [class.is-sent]="log.status === 'sent'">{{ titleCase(log.status) }}</span></article>
+        }
+      </section>
+      @if (logsTotal() > logsPageSize) {
+        <nav class="log-pagination"><button type="button" (click)="goToLogPage(logsPage() - 1)" [disabled]="logsPage() === 0"><ion-icon name="chevron-back-outline"></ion-icon> Previous</button><span>{{ logsPage() + 1 }} / {{ logsPages() }}</span><button type="button" (click)="goToLogPage(logsPage() + 1)" [disabled]="logsPage() + 1 >= logsPages()">Next <ion-icon name="chevron-forward-outline"></ion-icon></button></nav>
+      }
+    }
+  }
+</main>

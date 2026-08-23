@@ -24,6 +24,9 @@ const administratorRoutes = new Set([
   ...staffRoutes,
   '/app/payments',
   '/app/customers',
+  '/app/member-tiers',
+  '/app/experience',
+  '/app/content',
   '/app/reports',
   '/app/activity',
 ]);
