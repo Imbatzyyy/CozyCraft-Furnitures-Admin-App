@@ -37,6 +37,7 @@ export class NativePlatformService {
   private static readonly BACKGROUND_UNLOCK_GRACE_MS = 15_000;
   private static readonly PUSH_REGISTRATION_TIMEOUT_MS = 25_000;
   private static readonly ANDROID_PUSH_CHANNEL = 'cozycraft_operations';
+  private static readonly ANDROID_ORDER_CHANNEL = 'cozycraft_orders';
   private static readonly IOS_LOCAL_ALERT_OWNER_KEY = 'cozycraft-admin-ios-local-alert-owner';
   readonly native = signal(Capacitor.isNativePlatform());
   readonly platform = signal(Capacitor.getPlatform());
@@ -344,16 +345,28 @@ export class NativePlatformService {
 
   private async prepareAndroidPushChannel() {
     if (this.platform() !== 'android' || !environment.androidPushConfigured) return;
-    await PushNotifications.createChannel({
-      id: NativePlatformService.ANDROID_PUSH_CHANNEL,
-      name: 'CozyCraft operations',
-      description: 'Orders, inventory, reviews, customer care, and security alerts.',
-      importance: 4,
-      visibility: 1,
-      vibration: true,
-      lights: true,
-      lightColor: '#B8A58D',
-    }).catch(() => undefined);
+    await Promise.all([
+      PushNotifications.createChannel({
+        id: NativePlatformService.ANDROID_ORDER_CHANNEL,
+        name: 'Orders and payments',
+        description: 'New orders, payment updates, cancellations, and return requests.',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#B8A58D',
+      }),
+      PushNotifications.createChannel({
+        id: NativePlatformService.ANDROID_PUSH_CHANNEL,
+        name: 'CozyCraft operations',
+        description: 'Inventory, reviews, customer care, reports, and security alerts.',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#B8A58D',
+      }),
+    ]).catch(() => undefined);
   }
 
   private async registerIosLocalAlerts(): Promise<string | null> {
@@ -403,6 +416,9 @@ export class NativePlatformService {
       body: notification.message || 'A new operational update is available.',
       schedule: { at: new Date(Date.now() + 250) },
       sound: 'default',
+      threadIdentifier: `cozycraft-admin-${notification.kind}`,
+      summaryArgument: this.localNotificationSummary(notification.kind),
+      relevanceScore: notification.kind === 'order' ? 1 : notification.kind === 'support' ? 0.85 : 0.7,
       extra: {
         notification_id: String(notification.id),
         kind: notification.kind,
@@ -412,6 +428,17 @@ export class NativePlatformService {
     }] }).catch(() => {
       this.presentedLocalAlertIds.delete(notification.id);
     });
+  }
+
+  private localNotificationSummary(kind: AdminNotification['kind']) {
+    switch (kind) {
+      case 'order': return 'Order update';
+      case 'inventory': return 'Inventory alert';
+      case 'review': return 'Customer review';
+      case 'support': return 'Customer care';
+      case 'report': return 'Performance report';
+      default: return 'Admin update';
+    }
   }
 
   private async configureLocalNotificationListeners() {

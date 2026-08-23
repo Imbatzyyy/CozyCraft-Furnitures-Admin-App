@@ -24,6 +24,8 @@ const config: CapacitorConfig = {
       presentationOptions: ['badge', 'sound', 'banner', 'list'],
     },
     LocalNotifications: {
+      smallIcon: 'ic_stat_cozycraft',
+      iconColor: '#B8A58D',
       presentationOptions: ['badge', 'sound', 'banner', 'list'],
     },
   },
