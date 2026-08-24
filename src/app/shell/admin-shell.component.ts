@@ -376,10 +376,15 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
   }
 
   async openSearch() {
+    await this.native.tap();
     const modal = await this.modals.create({
       component: WorkspaceSearchComponent,
-      breakpoints: [0, 0.72, 1],
-      initialBreakpoint: 0.72,
+      breakpoints: [0, 0.9, 1],
+      initialBreakpoint: 0.9,
+      backdropDismiss: true,
+      handle: true,
+      handleBehavior: 'cycle',
+      keyboardClose: true,
       cssClass: 'cc-search-modal',
     });
     await modal.present();

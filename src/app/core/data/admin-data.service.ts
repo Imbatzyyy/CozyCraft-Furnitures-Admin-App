@@ -30,6 +30,7 @@ import {
 } from '../models/defaults';
 import { isAdminRole } from '../utils/admin-permissions';
 import { settledOrder } from '../utils/format';
+import { adminNotificationDestination } from '../utils/notification-destination';
 
 const orderGraphSelect = [
   'id',
@@ -187,35 +188,57 @@ export class AdminDataService {
   readonly searchIndex = computed<WorkspaceSearchResult[]>(() => [
     ...this.productsState().map((product) => ({
       id: `product-${product.id}`,
+      kind: 'product' as const,
       title: product.name,
       detail: `${product.category} · ${product.stock_quantity} in stock`,
       route: `/app/products/${product.id}`,
       icon: 'cube-outline',
-      keywords: `${product.id} ${product.category} ${product.subcategory} ${product.status}`,
+      keywords: `${product.id} ${product.category} ${product.subcategory} ${product.status} ${product.color} ${product.material} ${product.description}`,
     })),
     ...this.ordersState().map((order) => ({
       id: `order-${order.id}`,
+      kind: 'order' as const,
       title: `Order ${order.order_number}`,
       detail: `${order.shipping_address.name || order.profiles?.full_name || 'Customer'} · ${order.status}`,
       route: `/app/orders/${order.id}`,
       icon: 'receipt-outline',
-      keywords: `${order.id} ${order.payment_method} ${order.payment_status} ${order.shipping_address.email ?? ''}`,
+      keywords: `${order.id} ${order.order_number} ${order.payment_method} ${order.payment_status} ${order.shipping_address.email ?? ''} ${order.shipping_address.mobile ?? ''} ${order.profiles?.email ?? ''} ${order.profiles?.phone ?? ''} ${order.order_items.map((item) => item.product_name).join(' ')}`,
     })),
     ...this.customersState().map((customer) => ({
       id: `customer-${customer.id}`,
+      kind: 'customer' as const,
       title: customer.full_name || customer.username || 'Customer',
       detail: customer.email || customer.phone || 'Customer account',
       route: `/app/customers/${customer.id}`,
       icon: 'person-outline',
-      keywords: `${customer.id} ${customer.username ?? ''} ${customer.phone ?? ''}`,
+      keywords: `${customer.id} ${customer.username ?? ''} ${customer.email ?? ''} ${customer.phone ?? ''}`,
     })),
     ...this.ticketsState().map((ticket) => ({
       id: `ticket-${ticket.id}`,
+      kind: 'ticket' as const,
       title: `${ticket.ticket_number} · ${ticket.subject}`,
       detail: `${ticket.profiles?.full_name || ticket.profiles?.email || 'Customer'} · ${ticket.status}`,
       route: `/app/support/${ticket.id}`,
       icon: 'chatbubble-outline',
-      keywords: `${ticket.message} ${ticket.category} ${ticket.priority}`,
+      keywords: `${ticket.ticket_number} ${ticket.message} ${ticket.category} ${ticket.priority} ${ticket.profiles?.email ?? ''} ${ticket.order_id ?? ''}`,
+    })),
+    ...this.reviewsState().map((review) => ({
+      id: `review-${review.id}`,
+      kind: 'review' as const,
+      title: review.title || `${review.rating}-star review`,
+      detail: `${review.profiles?.full_name || review.reviewer_display_name || 'Customer'} · ${review.products?.name || 'Product review'}`,
+      route: `/app/reviews?review=${encodeURIComponent(review.id)}`,
+      icon: 'star-outline',
+      keywords: `${review.id} ${review.body} ${review.rating} star ${review.approved ? 'published approved' : 'pending hidden'} ${review.profiles?.email ?? ''} ${review.products?.name ?? ''}`,
+    })),
+    ...this.notificationsState().map((notification) => ({
+      id: `notification-${notification.id}`,
+      kind: 'notification' as const,
+      title: notification.title,
+      detail: notification.message,
+      route: adminNotificationDestination(notification),
+      icon: 'notifications-outline',
+      keywords: `${notification.id} ${notification.kind} ${notification.entity_type} ${notification.entity_id ?? ''} ${notification.read_at ? 'read' : 'unread'}`,
     })),
   ]);
 

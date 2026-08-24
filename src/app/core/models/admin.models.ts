@@ -364,8 +364,11 @@ export interface DashboardMetrics {
   customers: number;
 }
 
+export type WorkspaceSearchKind = 'page' | 'order' | 'product' | 'customer' | 'ticket' | 'review' | 'notification';
+
 export interface WorkspaceSearchResult {
   id: string;
+  kind: WorkspaceSearchKind;
   title: string;
   detail: string;
   route: string;
