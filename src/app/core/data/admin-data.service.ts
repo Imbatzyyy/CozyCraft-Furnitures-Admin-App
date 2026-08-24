@@ -83,6 +83,7 @@ const CLIENT_ERROR_PAGE_SIZE = 16;
 const ACTIVITY_REFRESH_PAGE_SIZE = 24;
 const CLIENT_ERROR_REFRESH_PAGE_SIZE = 8;
 const NOTIFICATION_PAGE_SIZE = 30;
+const NOTIFICATION_WRITE_BATCH_SIZE = 500;
 
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
@@ -770,7 +771,16 @@ export class AdminDataService {
     const userId = this.auth.userId();
     if (!userId) return;
     const { error } = await this.client.rpc('mark_all_admin_notifications_read');
-    if (error) throw error;
+    if (error) {
+      const missingRpc = error.code === 'PGRST202'
+        || (
+          error.message.includes('Could not find the function')
+          && error.message.includes('mark_all_admin_notifications_read')
+          && error.message.includes('schema cache')
+        );
+      if (!missingRpc) throw error;
+      await this.markAllNotificationsReadPortable(userId);
+    }
     const readAt = new Date().toISOString();
     if (this.auth.userId() === userId) {
       this.notificationsState.update((items) => items.map((item) => ({ ...item, read_at: item.read_at ?? readAt })));
@@ -1133,6 +1143,34 @@ export class AdminDataService {
         dismissed_at: readMap.get(row.id)?.dismissed_at ?? null,
       }))
       .filter((row) => !row.dismissed_at);
+  }
+
+  private async markAllNotificationsReadPortable(userId: string) {
+    // Older CozyCraft deployments may not expose the optimized RPC yet. Fetch
+    // IDs only, then write them in bounded batches so the action remains fully
+    // functional without downloading notification content. `dismissed_at` is
+    // intentionally omitted so an existing dismissal is never reversed.
+    const rows = await this.pagedRows((from, to) => this.client
+      .from('admin_notifications')
+      .select('id')
+      .order('id')
+      .range(from, to)) as Array<{ id: number }>;
+    if (this.auth.userId() !== userId || rows.length === 0) return;
+
+    const readAt = new Date().toISOString();
+    for (let offset = 0; offset < rows.length; offset += NOTIFICATION_WRITE_BATCH_SIZE) {
+      if (this.auth.userId() !== userId) return;
+      const batch = rows.slice(offset, offset + NOTIFICATION_WRITE_BATCH_SIZE);
+      const { error } = await this.client.from('admin_notification_reads').upsert(
+        batch.map(({ id }) => ({
+          notification_id: id,
+          user_id: userId,
+          read_at: readAt,
+        })),
+        { onConflict: 'notification_id,user_id' },
+      );
+      if (error) throw error;
+    }
   }
 
   private async pagedRows<T>(
