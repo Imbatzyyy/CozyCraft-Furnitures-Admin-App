@@ -180,6 +180,14 @@
   margin: 4px auto 7px;
 }
 
+/* Give classic Android button navigation a little more separation from the
+ * system controls. The native activity adds this class only for a bottom
+ * tappable navigation bar; Android gesture navigation and every iOS layout
+ * retain their existing dock position. */
+:host-context(.cc-android-button-navigation) .cc-mobile-tabs {
+  margin-bottom: 14px;
+}
+
 :host-context(.cc-android-native) .cc-app-header ion-toolbar,
 :host-context(.cc-android-native) .cc-mobile-tabs__glass {
   -webkit-backdrop-filter: none;
