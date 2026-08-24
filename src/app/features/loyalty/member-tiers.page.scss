@@ -47,7 +47,8 @@
 .pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-top: 3px; }
 .pagination button { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--cc-border); border-radius: 14px; background: var(--cc-surface); color: var(--cc-ink); font-size: 10px; font-weight: 750; }
 .pagination button:last-child { background: var(--cc-ink); color: white; }.pagination button:disabled { opacity: .38; }.pagination span { color: var(--cc-ink-soft); font-size: 10px; font-weight: 800; }
-.member-sheet { min-height: 100%; background: var(--cc-canvas); padding: 18px 14px calc(25px + env(safe-area-inset-bottom)); }
+.member-sheet-scroll { --background: var(--cc-canvas); overscroll-behavior: contain; }
+.member-sheet { min-height: 100%; background: var(--cc-canvas); padding: 18px max(14px, env(safe-area-inset-right)) max(34px, calc(22px + env(safe-area-inset-bottom))) max(14px, env(safe-area-inset-left)); }
 .sheet-header { align-items: flex-start; }
 .member-avatar--large { width: 54px; height: 54px; border-radius: 18px; }
 .sheet-header > span:nth-child(2) { min-width: 0; flex: 1; }

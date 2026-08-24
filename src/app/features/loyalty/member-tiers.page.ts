@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, signal } from '@angular/core';
-import { IonIcon, IonModal, IonSearchbar, IonSelect, IonSelectOption, IonSpinner } from '@ionic/angular/standalone';
+import { IonContent, IonIcon, IonModal, IonSearchbar, IonSelect, IonSelectOption, IonSpinner } from '@ionic/angular/standalone';
 import { NativePlatformService } from '../../core/native/native-platform.service';
 import { dateTime, initials, money, shortDate, titleCase } from '../../core/utils/format';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
@@ -25,7 +25,7 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
 @Component({
   selector: 'cc-member-tiers-page',
   standalone: true,
-  imports: [IonIcon, IonModal, IonSearchbar, IonSelect, IonSelectOption, IonSpinner, EmptyStateComponent, SkeletonListComponent],
+  imports: [IonContent, IonIcon, IonModal, IonSearchbar, IonSelect, IonSelectOption, IonSpinner, EmptyStateComponent, SkeletonListComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="cc-page loyalty-page">
@@ -104,10 +104,18 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
       }
     </main>
 
-    <ion-modal class="member-modal" [isOpen]="selected() !== null" [breakpoints]="[0, 0.78, 1]" [initialBreakpoint]="0.78" (ionModalDidDismiss)="closeMember()">
+    <ion-modal
+      class="member-modal"
+      [isOpen]="selected() !== null"
+      [breakpoints]="[0, 0.78, 1]"
+      [initialBreakpoint]="0.78"
+      [expandToScroll]="false"
+      (ionModalDidDismiss)="closeMember()"
+    >
       <ng-template>
         @if (selected(); as member) {
-          <section class="member-sheet">
+          <ion-content class="member-sheet-scroll" [fullscreen]="true" [scrollY]="true">
+            <section class="member-sheet">
             <header class="sheet-header">
               <span class="member-avatar member-avatar--large"><b>{{ initials(member.full_name) }}</b>@if (member.avatar_url) { <img [src]="member.avatar_url" alt="" (error)="hideImage($event)" /> }</span>
               <span><small>SELECTED MEMBER</small><h2>{{ member.full_name }}</h2><p>&#64;{{ member.username }} · {{ member.email }}</p></span>
@@ -167,7 +175,8 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
                 }
               </section>
             }
-          </section>
+            </section>
+          </ion-content>
         }
       </ng-template>
     </ion-modal>
