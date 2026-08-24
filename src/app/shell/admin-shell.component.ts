@@ -42,9 +42,6 @@ interface NavItem {
   template: `
     <div class="ion-page" id="admin-workspace" [class.is-tab-switching]="tabSwitching()">
         <ion-header class="cc-app-header">
-          @if (!native.online()) {
-            <div class="offline-strip"><ion-icon name="cloud-offline-outline"></ion-icon> Offline · showing the last synchronized workspace</div>
-          }
           <ion-toolbar>
             <div class="mobile-toolbar">
               <div class="page-context">

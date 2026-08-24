@@ -15,6 +15,7 @@ import { canAccessRoute } from '../utils/admin-permissions';
 import { adminNotificationDestination } from '../utils/notification-destination';
 import type { NotificationDestinationInput } from '../utils/notification-destination';
 import { environment } from '../../../environments/environment.generated';
+import { ConnectivityService } from './connectivity.service';
 
 export type NativePushPhase =
   | 'checking'
@@ -43,7 +44,6 @@ export class NativePlatformService {
   private static readonly IOS_LOCAL_ALERT_OWNER_KEY = 'cozycraft-admin-ios-local-alert-owner';
   readonly native = signal(Capacitor.isNativePlatform());
   readonly platform = signal(Capacitor.getPlatform());
-  readonly online = signal(navigator.onLine);
   readonly foreground = signal(true);
   private pushToken = localStorage.getItem('cozycraft-admin-push-token') ?? '';
   private pushOwner = localStorage.getItem('cozycraft-admin-push-owner') ?? '';
@@ -83,10 +83,9 @@ export class NativePlatformService {
     private readonly router: Router,
     private readonly auth: AdminAuthService,
     private readonly appLock: AppLockService,
+    private readonly connectivity: ConnectivityService,
   ) {
     this.auth.registerSessionEndHook(() => this.unregisterPushNotifications().then(() => undefined));
-    window.addEventListener('online', () => this.online.set(true));
-    window.addEventListener('offline', () => this.online.set(false));
     this.router.events.subscribe((event) => {
       if (!(event instanceof NavigationEnd) || !this.pendingPushRoute) return;
       if (event.urlAfterRedirects !== this.pendingPushRoute) return;
@@ -95,6 +94,7 @@ export class NativePlatformService {
   }
 
   async initialize() {
+    this.connectivity.initialize();
     await this.auth.ensureInitialized();
     await this.retryPendingPushRevocations();
     if (!this.native()) {
@@ -129,6 +129,7 @@ export class NativePlatformService {
       // authentication promise is still settling. Its result is the current
       // security decision, so do not launch a competing resume refresh.
       if (this.appLock.biometricBusy()) return;
+      void this.connectivity.checkNow(true);
       if (inactiveAt !== null
         && Date.now() - inactiveAt >= NativePlatformService.BACKGROUND_UNLOCK_GRACE_MS) {
         this.appLock.lock();

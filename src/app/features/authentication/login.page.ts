@@ -9,6 +9,7 @@ import {
   IonSpinner,
 } from '@ionic/angular/standalone';
 import { AdminAuthService } from '../../core/auth/admin-auth.service';
+import { ConnectivityService } from '../../core/native/connectivity.service';
 import { safeAdminReturnUrl } from '../../core/utils/admin-permissions';
 
 @Component({
@@ -47,6 +48,20 @@ import { safeAdminReturnUrl } from '../../core/utils/admin-permissions';
               <div class="cc-notice cc-notice--warning">
                 <ion-icon name="construct-outline"></ion-icon>
                 <span>This build needs the Supabase URL and publishable key before it can connect.</span>
+              </div>
+            }
+
+            @if (connectivity.offline()) {
+              <div class="cc-notice cc-notice--danger auth-network-notice" role="alert">
+                <ion-icon name="cloud-offline-outline"></ion-icon>
+                <span><b>No internet connection</b><small>Sign-in needs a connection to verify your administrator account.</small></span>
+                <button type="button" (click)="connectivity.retry()" [disabled]="connectivity.checking()">{{ connectivity.checking() ? 'Checking' : 'Retry' }}</button>
+              </div>
+            } @else if (connectivity.unstable()) {
+              <div class="cc-notice cc-notice--warning auth-network-notice" role="status">
+                <ion-icon name="warning-outline"></ion-icon>
+                <span><b>Connection is unstable</b><small>You can continue, but secure verification may take longer.</small></span>
+                <button type="button" (click)="connectivity.retry()" [disabled]="connectivity.checking()">{{ connectivity.checking() ? 'Checking' : 'Retry' }}</button>
               </div>
             }
 
@@ -105,7 +120,7 @@ import { safeAdminReturnUrl } from '../../core/utils/admin-permissions';
               </div>
             }
 
-            <ion-button type="submit" expand="block" class="cc-primary-button auth-submit" [disabled]="form.invalid || auth.busy() || !auth.configured()">
+            <ion-button type="submit" expand="block" class="cc-primary-button auth-submit" [disabled]="form.invalid || auth.busy() || !auth.configured() || connectivity.offline()">
               @if (auth.busy()) { <ion-spinner name="crescent"></ion-spinner><span>Verifying access…</span> }
               @else { <span>Continue securely</span><ion-icon slot="end" name="arrow-forward-outline"></ion-icon> }
             </ion-button>
@@ -127,12 +142,18 @@ export class LoginPage {
 
   constructor(
     readonly auth: AdminAuthService,
+    readonly connectivity: ConnectivityService,
     private readonly router: Router,
     private readonly route: ActivatedRoute,
   ) {}
 
   async submit() {
     this.submitted.set(true);
+    if (this.connectivity.offline()) {
+      this.error.set('No internet connection. Reconnect before signing in.');
+      await this.connectivity.retry();
+      return;
+    }
     if (this.form.invalid || this.auth.busy()) {
       this.form.markAllAsTouched();
       return;

@@ -184,6 +184,43 @@
   margin-top: 15px;
 }
 
+.auth-network-notice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.auth-network-notice > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.auth-network-notice b {
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.auth-network-notice small {
+  font-size: 9px;
+  font-weight: 550;
+  line-height: 1.35;
+}
+
+.auth-network-notice button {
+  min-width: 55px;
+  min-height: 36px;
+  border: 1px solid currentColor;
+  border-radius: 11px;
+  background: transparent;
+  padding: 0 8px;
+  color: inherit;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.auth-network-notice button:disabled { opacity: .55; }
+
 .auth-field {
   display: grid;
   gap: 8px;

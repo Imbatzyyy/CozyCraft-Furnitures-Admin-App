@@ -1,15 +1,18 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
 import { AdminAuthService } from './core/auth/admin-auth.service';
+import { ConnectivityService } from './core/native/connectivity.service';
 import { NativePlatformService } from './core/native/native-platform.service';
+import { ConnectivityBannerComponent } from './shared/components/connectivity-banner.component';
 
 @Component({
   selector: 'cc-root',
   standalone: true,
-  imports: [IonApp, IonRouterOutlet],
+  imports: [IonApp, IonRouterOutlet, ConnectivityBannerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ion-app>
+      <cc-connectivity-banner></cc-connectivity-banner>
       @if (!auth.ready()) {
         <section class="app-bootstrap" role="status" aria-live="polite" aria-label="Opening CozyCraft Admin">
           <span class="app-bootstrap__mark" aria-hidden="true"><i></i></span>
@@ -146,9 +149,11 @@ import { NativePlatformService } from './core/native/native-platform.service';
 })
 export class AppComponent {
   readonly auth = inject(AdminAuthService);
+  private readonly connectivity = inject(ConnectivityService);
   private readonly native = inject(NativePlatformService);
 
   constructor() {
+    this.connectivity.initialize();
     void this.auth.ensureInitialized();
     void this.native.initialize();
   }

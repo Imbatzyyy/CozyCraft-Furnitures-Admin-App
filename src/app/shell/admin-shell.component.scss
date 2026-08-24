@@ -29,8 +29,6 @@
 .header-action ion-icon { font-size: 19px; }
 .header-actions__divider { width: 1px; height: 17px; background: rgb(68 60 51 / .1); }
 .notification-count { position: absolute; top: -5px; right: -5px; display: grid; min-width: 17px; height: 17px; place-items: center; border: 2px solid var(--cc-canvas); border-radius: 999px; background: #a65d45; padding: 0 3px; color: white; font-size: 9px; font-weight: 820; line-height: 1; }
-.offline-strip { display: flex; min-height: 27px; align-items: center; justify-content: center; gap: 7px; background: #8e5b45; padding: 4px 12px; color: white; font-size: 11px; font-weight: 750; letter-spacing: .04em; text-align: center; }
-
 .workspace-content { --background: var(--cc-canvas); }
 .cc-app-footer {
   position: absolute;

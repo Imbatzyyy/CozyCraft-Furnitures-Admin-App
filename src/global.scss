@@ -19,6 +19,28 @@ body { width: 100%; min-width: 320px; min-height: 100dvh; max-width: 100%; overf
 button, input, textarea, select { font: inherit; }
 
 /*
+ * The connectivity alert lives above every route, including sign-in and PIN.
+ * Reserve a compact safe-area lane while it is visible so the floating alert
+ * never hides page branding, header actions, or authentication controls.
+ */
+html.cc-connectivity-visible {
+  --cc-connectivity-offset: 74px;
+}
+
+html.cc-connectivity-visible .auth-stage,
+html.cc-connectivity-visible .pin-stage {
+  padding-top: calc(max(19px, env(safe-area-inset-top)) + var(--cc-connectivity-offset));
+}
+
+html.cc-connectivity-visible .mfa-page {
+  padding-top: calc(max(28px, env(safe-area-inset-top)) + var(--cc-connectivity-offset));
+}
+
+html.cc-connectivity-visible .cc-app-header {
+  padding-top: var(--cc-connectivity-offset);
+}
+
+/*
  * iOS magnifies a page when the focused editable control resolves below 16px.
  * Ionic inputs keep the native element in shadow DOM, so protect both the host
  * and its exposed native part. The fixed viewport above is the native-shell
