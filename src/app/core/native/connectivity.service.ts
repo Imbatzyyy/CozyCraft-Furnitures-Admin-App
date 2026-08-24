@@ -32,6 +32,7 @@ export class ConnectivityService {
   private static readonly SLOW_PROBE_MS = 2_400;
   private static readonly RESTORED_VISIBILITY_MS = 3_800;
   private static readonly SECOND_PROBE_DELAY_MS = 2_500;
+  private static readonly OFFLINE_VERIFICATION_DELAY_MS = 1_200;
 
   private readonly statusState = signal<ConnectivityStatus>(navigator.onLine ? 'checking' : 'offline');
   private readonly checkingState = signal(false);
@@ -98,19 +99,23 @@ export class ConnectivityService {
     }, ConnectivityService.PROBE_INTERVAL_MS);
 
     if (!navigator.onLine) {
-      this.applyStatus('offline');
+      this.handleOffline();
       return;
     }
     void this.checkNow(true);
   }
 
   retry(): Promise<void> {
+    // A native WebView can keep navigator.onLine=false briefly after Wi-Fi is
+    // usable again. Treat an explicit retry as a fresh verification attempt;
+    // the HTTPS health response is the authoritative recovery signal.
+    this.consecutiveFailures = 0;
     return this.checkNow(true);
   }
 
   checkNow(force = false): Promise<void> {
     if (this.activeProbe) return this.activeProbe;
-    if (!navigator.onLine) {
+    if (!navigator.onLine && (!force || !this.healthUrl())) {
       this.consecutiveFailures = 2;
       this.applyStatus('offline');
       return Promise.resolve();
@@ -132,6 +137,10 @@ export class ConnectivityService {
     this.consecutiveFailures = 2;
     this.checkingState.set(false);
     this.applyStatus('offline');
+    this.followUpTimer = setTimeout(() => {
+      this.followUpTimer = null;
+      void this.checkNow(true);
+    }, ConnectivityService.OFFLINE_VERIFICATION_DELAY_MS);
   };
 
   private readonly handleOnline = (): void => {
@@ -178,11 +187,9 @@ export class ConnectivityService {
         referrerPolicy: 'no-referrer',
         signal: controller.signal,
       });
-      if (!navigator.onLine) {
-        this.consecutiveFailures = 2;
-        this.applyStatus('offline');
-        return;
-      }
+      // A completed request proves the service is reachable even when
+      // WKWebView has not refreshed navigator.onLine yet.
+      this.cancelFollowUpProbe();
       const elapsed = performance.now() - startedAt;
       this.consecutiveFailures = 0;
       this.applyStatus(elapsed >= ConnectivityService.SLOW_PROBE_MS || this.hasWeakConnectionInformation()
@@ -191,7 +198,7 @@ export class ConnectivityService {
     } catch {
       this.consecutiveFailures += 1;
       this.applyStatus(this.consecutiveFailures >= 2 ? 'offline' : 'unstable');
-      if (this.consecutiveFailures < 2 && navigator.onLine) {
+      if (this.consecutiveFailures < 2) {
         this.followUpTimer = setTimeout(() => {
           this.followUpTimer = null;
           void this.checkNow(true);
