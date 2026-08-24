@@ -52,7 +52,7 @@
             >
               <a class="stock-card__product" [routerLink]="['/app/products', product.id]">
                 <span class="stock-card__image">
-                  @if (primaryImage(product)) { <img ccImgFallback [src]="primaryImage(product)" [alt]="product.name" /> }
+                  @if (primaryImage(product)) { <img ccImgFallback [src]="primaryImage(product)" [alt]="product.name" loading="lazy" decoding="async" /> }
                   @else { <ion-icon name="image-outline" aria-hidden="true"></ion-icon> }
                 </span>
                 <span class="stock-card__copy">
@@ -114,7 +114,7 @@
 
       <div class="stock-adjustment__product">
         <span>
-          @if (primaryImage(pending.product)) { <img ccImgFallback [src]="primaryImage(pending.product)" [alt]="pending.product.name" /> }
+          @if (primaryImage(pending.product)) { <img ccImgFallback [src]="primaryImage(pending.product)" [alt]="pending.product.name" decoding="async" /> }
           @else { <ion-icon name="cube-outline" aria-hidden="true"></ion-icon> }
         </span>
         <div><b>{{ pending.product.name }}</b><small>{{ pending.product.category }} · {{ pending.product.stock_quantity }} currently on hand</small></div>

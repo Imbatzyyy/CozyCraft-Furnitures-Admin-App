@@ -343,6 +343,40 @@
   .workspace-loader__copy { margin-top: 8px; }
 }
 
+:host-context(.cc-performance-lite) .cc-app-header ion-toolbar,
+:host-context(.cc-performance-lite) .cc-mobile-tabs__glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:host-context(.cc-performance-lite) .cc-app-header ion-toolbar {
+  --background: var(--cc-canvas);
+}
+
+:host-context(.cc-performance-lite) .cc-mobile-tabs__glass {
+  box-shadow: 0 5px 14px rgb(47 40 33 / .11), inset 0 1px 0 rgb(255 255 255 / .82);
+}
+
+:host-context(.cc-performance-lite) .workspace-router,
+:host-context(.cc-performance-lite) .cc-app-footer,
+:host-context(.cc-performance-lite) .cc-mobile-tabs .cc-tab-button,
+:host-context(.cc-performance-lite) .cc-mobile-tabs .tab-icon {
+  transition: none;
+}
+
+:host-context(.cc-performance-lite) .workspace-loader__pulse,
+:host-context(.cc-performance-lite) .workspace-loader__orbit,
+:host-context(.cc-performance-lite) .workspace-loader__core,
+:host-context(.cc-performance-lite) .workspace-loader__core::after,
+:host-context(.cc-performance-lite) .workspace-loader__grid i,
+:host-context(.cc-performance-lite) .workspace-loader__eyebrow > i,
+:host-context(.cc-performance-lite) .workspace-loader__dots i {
+  animation: none;
+}
+
+:host-context(.cc-performance-lite) .workspace-loader__pulse { opacity: .38; transform: none; }
+:host-context(.cc-performance-lite) .workspace-loader__grid i { background: rgb(248 244 237 / .78); transform: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .workspace-loader__pulse,
   .workspace-loader__orbit,

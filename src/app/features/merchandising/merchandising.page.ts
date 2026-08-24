@@ -98,7 +98,7 @@ interface SearchDemand {
             <header><span><ion-icon name="notifications-outline"></ion-icon></span><div><p>PRODUCT WATCHLIST</p><h2>Customers are waiting</h2></div></header>
             @if (alertDemand().length === 0) { <p class="insight-empty">No active stock or price alerts yet.</p> }
             @for (item of alertDemand(); track item.productId) {
-              <div class="alert-row"><span class="product-thumb">@if (item.image) { <img [src]="item.image" alt="" loading="lazy" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><div><b>{{ item.name }}</b><small>{{ item.category }}</small></div><span><b>{{ item.total }}</b><small>{{ item.stock }} stock · {{ item.price }} price</small></span></div>
+              <div class="alert-row"><span class="product-thumb">@if (item.image) { <img [src]="item.image" alt="" loading="lazy" decoding="async" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><div><b>{{ item.name }}</b><small>{{ item.category }}</small></div><span><b>{{ item.total }}</b><small>{{ item.stock }} stock · {{ item.price }} price</small></span></div>
             }
           </article>
           <article class="insight-card">

@@ -1,17 +1,25 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { Capacitor } from '@capacitor/core';
-import { addIcons } from 'ionicons';
-import * as ionicons from 'ionicons/icons';
 import { AppComponent } from './app/app.component';
 import { appConfig } from './app/app.config';
+import { registerAppIcons } from './app/core/icons/app-icons';
+import { applyPerformanceProfile } from './app/core/performance/performance-profile';
 
-addIcons(ionicons);
+// Register the curated application glyphs instead of importing the complete
+// Ionicons catalog, which forced low-memory phones to parse icons for pages
+// they may never open.
+registerAppIcons();
+applyPerformanceProfile();
 
 // Mark every native iOS WebView before Angular renders. Some WKWebView user
 // agents do not expose the marketing OS version consistently, so the stable
 // platform class controls the glass-capable navigation treatment. Keep the
 // major-version class as useful progressive-enhancement metadata.
 const nativePlatform = Capacitor.getPlatform();
+
+if (Capacitor.isNativePlatform()) {
+  document.documentElement.classList.add('cc-native-app');
+}
 
 if (nativePlatform === 'ios') {
   document.documentElement.classList.add('cc-ios-glass');

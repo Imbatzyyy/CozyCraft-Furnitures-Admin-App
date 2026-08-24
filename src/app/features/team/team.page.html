@@ -108,7 +108,7 @@
             <header class="member-card__identity">
               <span class="member-avatar">
                 <i aria-hidden="true">{{ initials(displayName(member)) }}</i>
-                @if (member.avatar_url) { <img [src]="member.avatar_url" [alt]="displayName(member) + ' profile photo'" referrerpolicy="no-referrer" (error)="hideAvatar($event)" /> }
+                @if (member.avatar_url) { <img [src]="member.avatar_url" [alt]="displayName(member) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" decoding="async" (error)="hideAvatar($event)" /> }
                 <b [class.is-offline]="!member.staff_active" aria-hidden="true"></b>
               </span>
               <span class="member-name"><strong>{{ displayName(member) }}</strong><small>{{ member.email || member.phone || 'No contact detail' }}</small></span>

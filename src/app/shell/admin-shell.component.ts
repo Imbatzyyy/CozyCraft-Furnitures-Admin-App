@@ -152,6 +152,7 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private tabSettleFrame = 0;
   private tabHitCheckFrame = 0;
+  private primaryTabBounds: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom' | 'width'> | null = null;
   private requestedPrimaryRoute = '';
   private readonly activityEvents = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const;
   private readonly recordActivity = () => this.auth.recordActivity();
@@ -244,9 +245,14 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
     // before installing the bottom navigation hit targets.
     void this.native.releaseInputFocus().then(() => this.scheduleTabHitCheck());
     this.scheduleTabHitCheck();
-    document.addEventListener('pointerdown', this.handlePrimaryTabPointer, { capture: true, passive: false });
-    document.addEventListener('touchstart', this.handlePrimaryTabTouch, { capture: true, passive: false });
-    document.addEventListener('click', this.handlePrimaryTabClick, { capture: true, passive: false });
+    // The document-level hit map exists only for WKWebView's occasional
+    // compositing mismatch. Android and browser builds use the real buttons,
+    // avoiding three global capture handlers on every interaction.
+    if (this.native.platform() === 'ios') {
+      document.addEventListener('pointerdown', this.handlePrimaryTabPointer, { capture: true, passive: false });
+      document.addEventListener('touchstart', this.handlePrimaryTabTouch, { capture: true, passive: false });
+      document.addEventListener('click', this.handlePrimaryTabClick, { capture: true, passive: false });
+    }
     window.addEventListener('resize', this.scheduleTabHitCheck, { passive: true });
     window.addEventListener('orientationchange', this.scheduleTabHitCheck, { passive: true });
   }
@@ -278,11 +284,23 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
   private verifyTabHitTargets() {
     this.tabHitCheckFrame = 0;
     if (document.querySelector('#admin-workspace .stock-adjustment')) {
+      this.primaryTabBounds = null;
       document.documentElement.classList.remove('cc-tab-hit-fallback');
       return;
     }
+    const nav = document.querySelector<HTMLElement>('#admin-workspace .cc-mobile-tabs');
+    const navBounds = nav?.getBoundingClientRect();
+    this.primaryTabBounds = navBounds && navBounds.width > 0
+      ? {
+        left: navBounds.left,
+        right: navBounds.right,
+        top: navBounds.top,
+        bottom: navBounds.bottom,
+        width: navBounds.width,
+      }
+      : null;
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#admin-workspace .cc-tab-button'));
-    const blocked = buttons.length !== this.primaryNav.length || buttons.some((button) => {
+    const blocked = !this.primaryTabBounds || buttons.length !== this.primaryNav.length || buttons.some((button) => {
       const bounds = button.getBoundingClientRect();
       if (bounds.width < 40 || bounds.height < 40) return true;
       const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
@@ -292,6 +310,15 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
   }
 
   private primaryTabAtPoint(clientX: number, clientY: number): NavItem | null {
+    const visualViewport = window.visualViewport;
+    const viewportBottom = visualViewport
+      ? visualViewport.offsetTop + visualViewport.height
+      : window.innerHeight;
+    // Most touches are page scrolling or controls far above the tab bar. Exit
+    // before querying layout so those gestures never force a synchronous
+    // getBoundingClientRect() on older iPhones.
+    if (clientY < viewportBottom - 128) return null;
+
     // Dialog actions own the full bottom interaction band while an inventory
     // adjustment is open. The shell installs capture-phase touch handlers for
     // iOS reliability, so this guard is required in addition to CSS pointer
@@ -299,11 +326,7 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
     if (document.querySelector('#admin-workspace .stock-adjustment')) return null;
     const nav = document.querySelector<HTMLElement>('#admin-workspace .cc-mobile-tabs');
     if (!nav) return null;
-    const bounds = nav.getBoundingClientRect();
-    const visualViewport = window.visualViewport;
-    const viewportBottom = visualViewport
-      ? visualViewport.offsetTop + visualViewport.height
-      : window.innerHeight;
+    const bounds = this.primaryTabBounds ?? nav.getBoundingClientRect();
     // iOS can report the touch in visual-viewport coordinates for one frame
     // after an auth/keyboard transition while getBoundingClientRect() has
     // already returned layout-viewport coordinates. Accept the compact bottom
@@ -429,6 +452,7 @@ export class AdminShellComponent implements AfterViewInit, OnDestroy {
     window.removeEventListener('resize', this.scheduleTabHitCheck);
     window.removeEventListener('orientationchange', this.scheduleTabHitCheck);
     document.documentElement.classList.remove('cc-tab-hit-fallback');
+    this.primaryTabBounds = null;
     if (this.idleTimer) clearInterval(this.idleTimer);
     this.routerSubscription.unsubscribe();
     for (const event of this.activityEvents) window.removeEventListener(event, this.recordActivity);

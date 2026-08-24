@@ -1,9 +1,11 @@
 import { ApplicationConfig, ErrorHandler } from '@angular/core';
-import { provideAnimations } from '@angular/platform-browser/animations';
-import { PreloadAllModules, provideRouter, withInMemoryScrolling, withPreloading } from '@angular/router';
+import { provideAnimations, provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter, withInMemoryScrolling, withPreloading } from '@angular/router';
 import { IonicRouteStrategy, provideIonicAngular } from '@ionic/angular/standalone';
 import { RouteReuseStrategy } from '@angular/router';
 import { appRoutes } from './app.routes';
+import { AdaptivePreloadingStrategy } from './core/performance/adaptive-preloading.strategy';
+import { appPerformanceProfile } from './core/performance/performance-profile';
 import { CozyErrorHandler } from './core/utils/cozy-error-handler';
 
 export const appConfig: ApplicationConfig = {
@@ -12,14 +14,14 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: CozyErrorHandler },
     provideIonicAngular({
       mode: 'ios',
-      animated: true,
+      animated: !appPerformanceProfile.constrained,
       rippleEffect: false,
       swipeBackEnabled: true,
     }),
-    provideAnimations(),
+    appPerformanceProfile.constrained ? provideNoopAnimations() : provideAnimations(),
     provideRouter(
       appRoutes,
-      withPreloading(PreloadAllModules),
+      withPreloading(AdaptivePreloadingStrategy),
       withInMemoryScrolling({ scrollPositionRestoration: 'top' }),
     ),
   ],

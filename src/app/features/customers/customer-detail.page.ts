@@ -22,7 +22,7 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
           <div class="profile-identity">
             <span class="profile-avatar">
               <i aria-hidden="true">{{ initials(displayName()) }}</i>
-              @if (item.avatar_url) { <img [src]="item.avatar_url" [alt]="displayName() + ' profile photo'" referrerpolicy="no-referrer" (error)="hideAvatar($event)" /> }
+              @if (item.avatar_url) { <img [src]="item.avatar_url" [alt]="displayName() + ' profile photo'" referrerpolicy="no-referrer" decoding="async" (error)="hideAvatar($event)" /> }
             </span>
             <div><p class="cc-eyebrow">Customer profile</p><h1 id="customer-name">{{ displayName() }}</h1><p>{{ item.username ? '@' + item.username : 'CozyCraft member' }} · joined {{ shortDate(item.created_at) }}</p></div>
           </div>

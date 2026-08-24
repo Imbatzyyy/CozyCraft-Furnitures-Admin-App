@@ -26,7 +26,7 @@ type CustomerFilter = 'all' | 'buyers' | 'new';
             @for (customer of picturedCustomers(); track customer.id) {
               <span class="community-face">
                 <i aria-hidden="true">{{ initials(displayName(customer)) }}</i>
-                @if (customer.avatar_url) { <img [src]="customer.avatar_url" [alt]="displayName(customer) + ' profile photo'" referrerpolicy="no-referrer" (error)="hideAvatar($event)" /> }
+                @if (customer.avatar_url) { <img [src]="customer.avatar_url" [alt]="displayName(customer) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" decoding="async" (error)="hideAvatar($event)" /> }
               </span>
             }
             <b>{{ data.customers().length }}</b><small>registered</small>
@@ -61,7 +61,7 @@ type CustomerFilter = 'all' | 'buyers' | 'new';
                 <header class="customer-card__head">
                   <span class="customer-avatar">
                     <i aria-hidden="true">{{ initials(displayName(customer)) }}</i>
-                    @if (customer.avatar_url) { <img [src]="customer.avatar_url" [alt]="displayName(customer) + ' profile photo'" referrerpolicy="no-referrer" (error)="hideAvatar($event)" /> }
+                    @if (customer.avatar_url) { <img [src]="customer.avatar_url" [alt]="displayName(customer) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" decoding="async" (error)="hideAvatar($event)" /> }
                   </span>
                   <span class="customer-identity"><b>{{ displayName(customer) }}</b><small>{{ customer.username ? '@' + customer.username : 'CozyCraft customer' }}</small></span>
                   <span class="customer-open"><ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon></span>

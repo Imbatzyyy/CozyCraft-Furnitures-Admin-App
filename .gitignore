@@ -6,7 +6,7 @@
 /.nyc_output
 /.idea
 /.vscode
-/.DS_Store
+**/.DS_Store
 /build
 /coverage
 /out-tsc

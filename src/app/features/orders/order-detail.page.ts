@@ -62,7 +62,7 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
             <div class="cc-section-head"><div><p class="cc-eyebrow">ORDERED PIECES</p><h2>{{ current.order_items.length }} line{{ current.order_items.length === 1 ? '' : 's' }}</h2></div></div>
             <div class="item-list">
               @for (item of current.order_items; track item.id) {
-                <div class="order-item"><span class="order-item__image">@if (item.image_url) { <img [src]="item.image_url" [alt]="item.product_name" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><span><b>{{ item.product_name }}</b><small>{{ item.quantity }} × {{ money(item.unit_price) }}</small></span><strong>{{ money(item.unit_price * item.quantity) }}</strong></div>
+                <div class="order-item"><span class="order-item__image">@if (item.image_url) { <img [src]="item.image_url" [alt]="item.product_name" loading="lazy" decoding="async" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><span><b>{{ item.product_name }}</b><small>{{ item.quantity }} × {{ money(item.unit_price) }}</small></span><strong>{{ money(item.unit_price * item.quantity) }}</strong></div>
               }
             </div>
             <dl class="order-totals"><div><dt>Merchandise</dt><dd>{{ money(current.subtotal) }}</dd></div><div><dt>Delivery</dt><dd>{{ current.delivery_fee ? money(current.delivery_fee) : 'Complimentary' }}</dd></div><div><dt>Total</dt><dd>{{ money(current.total) }}</dd></div></dl>

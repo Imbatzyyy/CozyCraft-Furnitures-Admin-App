@@ -48,7 +48,7 @@
         @for (banner of banners(); track banner.id; let index = $index) {
           <article class="editor-card banner-card" [attr.id]="'banner-' + banner.id">
             <div class="banner-preview">
-              @if (banner.image_url) { <img [src]="banner.image_url" [alt]="banner.title || 'Homepage campaign preview'" loading="lazy" (error)="hideImage($event)" /> }
+              @if (banner.image_url) { <img [src]="banner.image_url" [alt]="banner.title || 'Homepage campaign preview'" loading="lazy" decoding="async" (error)="hideImage($event)" /> }
               <span></span><div><small>{{ banner.eyebrow || 'COZYCRAFT EDIT' }}</small><h2>{{ banner.title || 'New homepage story' }}</h2><p>{{ banner.subtitle || 'Supporting campaign message' }}</p></div>
               <b [class.is-live]="banner.active"><i></i>{{ banner.active ? 'Eligible' : 'Hidden' }}</b>
             </div>
@@ -96,7 +96,7 @@
             <div>
               @for (product of workspace.products; track product.id) {
                 <button type="button" [class.is-selected]="newsletterDraft().product_ids.includes(product.id)" [disabled]="!newsletterDraft().product_ids.includes(product.id) && newsletterDraft().product_ids.length >= 4" (click)="toggleNewsletterProduct(product.id)">
-                  <span>@if (product.image_url) { <img [src]="product.image_url" alt="" loading="lazy" (error)="hideImage($event)" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><div><b>{{ product.name }}</b><small>{{ product.category }} · {{ money(product.price) }}</small></div><ion-icon [name]="newsletterDraft().product_ids.includes(product.id) ? 'checkmark-circle' : 'add-circle-outline'"></ion-icon>
+                  <span>@if (product.image_url) { <img [src]="product.image_url" alt="" loading="lazy" decoding="async" (error)="hideImage($event)" /> } @else { <ion-icon name="cube-outline"></ion-icon> }</span><div><b>{{ product.name }}</b><small>{{ product.category }} · {{ money(product.price) }}</small></div><ion-icon [name]="newsletterDraft().product_ids.includes(product.id) ? 'checkmark-circle' : 'add-circle-outline'"></ion-icon>
                 </button>
               }
             </div>

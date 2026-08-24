@@ -49,7 +49,7 @@ interface ReviewGallery {
             @for (review of avatarReviews().slice(0, 4); track review.id) {
               <span class="stack-avatar" [attr.title]="reviewerName(review)">
                 <b>{{ reviewerInitials(review) }}</b>
-                <img [src]="review.profiles!.avatar_url!" [alt]="reviewerName(review) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" (error)="hideAvatar($event)" />
+                <img [src]="review.profiles!.avatar_url!" [alt]="reviewerName(review) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" decoding="async" (error)="hideAvatar($event)" />
               </span>
             }
             @if (avatarReviews().length === 0) {
@@ -93,7 +93,7 @@ interface ReviewGallery {
                   <span class="reviewer-avatar">
                     <b>{{ reviewerInitials(review) }}</b>
                     @if (review.profiles?.avatar_url; as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="reviewerName(review) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" (error)="hideAvatar($event)" />
+                      <img [src]="avatarUrl" [alt]="reviewerName(review) + ' profile photo'" referrerpolicy="no-referrer" loading="lazy" decoding="async" (error)="hideAvatar($event)" />
                     }
                   </span>
                   <span class="reviewer-copy"><strong>{{ reviewerName(review) }}</strong><small>{{ formattedDate(review.created_at) }}</small></span>
@@ -114,7 +114,7 @@ interface ReviewGallery {
                 <div class="photo-preview">
                   @for (url of review.image_urls.slice(0, 2); track url; let index = $index) {
                     <button type="button" (click)="openGallery(review, index)" [attr.aria-label]="'Open customer photo ' + (index + 1) + ' from ' + reviewerName(review)">
-                      <img ccImgFallback [src]="url" [alt]="(review.products?.name || 'Product') + ' customer review photo ' + (index + 1)" loading="lazy" />
+                      <img ccImgFallback [src]="url" [alt]="(review.products?.name || 'Product') + ' customer review photo ' + (index + 1)" loading="lazy" decoding="async" />
                       <span><ion-icon name="expand-outline" /></span>
                       @if (index === 1 && review.image_urls.length > 2) { <b>+{{ review.image_urls.length - 2 }}</b> }
                     </button>

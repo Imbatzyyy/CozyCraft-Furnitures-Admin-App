@@ -87,7 +87,7 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
         <section class="member-list" aria-label="Loyalty members">
           @for (member of service.members(); track member.user_id) {
             <button type="button" class="member-card" (click)="openMember(member)">
-              <span class="member-avatar"><b>{{ initials(member.full_name) }}</b>@if (member.avatar_url) { <img [src]="member.avatar_url" [alt]="member.full_name + ' profile photo'" loading="lazy" (error)="hideImage($event)" /> }</span>
+              <span class="member-avatar"><b>{{ initials(member.full_name) }}</b>@if (member.avatar_url) { <img [src]="member.avatar_url" [alt]="member.full_name + ' profile photo'" loading="lazy" decoding="async" (error)="hideImage($event)" /> }</span>
               <span class="member-copy"><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small><span><i [class]="'tier-dot tier-dot--' + member.tier"></i>{{ titleCase(member.tier) }} · {{ member.points_balance.toLocaleString('en-PH') }} pts</span></span>
               <span class="member-value"><b>{{ money(member.lifetime_eligible_spend) }}</b><small>{{ member.last_activity_at ? 'Active ' + shortDate(member.last_activity_at) : 'No activity yet' }}</small><ion-icon name="chevron-forward-outline"></ion-icon></span>
             </button>

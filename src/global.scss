@@ -89,9 +89,65 @@ img, svg, video { max-width: 100%; }
 .orders-list > .order-card,
 .product-results > .product-card,
 .ticket-list > .ticket-card,
-.customers-list > .customer-row {
+.customers-list > .customer-row,
+.customer-grid > .customer-card,
+.category-list > .category-card,
+.stock-list > .stock-card,
+.review-list > .review-card,
+.member-list > .member-card,
+.member-grid > .member-card,
+.notification-feed > .notification-card,
+.timeline > .day-group,
+.area-list > .area-card,
+.campaign-list > article {
   content-visibility: auto;
   contain-intrinsic-size: auto 240px;
+}
+
+/*
+ * Low-power rendering keeps the visual hierarchy while avoiding expensive
+ * blur sampling, repeated decorative animation, and large soft-shadow layers.
+ * The class is selected locally from coarse browser capability hints; it does
+ * not identify the device or change any application feature.
+ */
+html.cc-performance-lite {
+  --cc-shadow-sm: 0 2px 8px rgb(49 42 35 / .045);
+  --cc-shadow-md: 0 7px 18px rgb(45 38 31 / .075);
+  --cc-shadow-lg: 0 12px 30px rgb(45 38 31 / .12);
+}
+
+html.cc-performance-lite .cc-reveal,
+html.cc-performance-lite .activity-skeleton i {
+  animation: none !important;
+}
+
+html.cc-performance-lite :where(
+  .order-card,
+  .product-card,
+  .ticket-card,
+  .customer-card,
+  .category-card,
+  .stock-card,
+  .review-card,
+  .member-card,
+  .notification-card,
+  .event-card
+) {
+  transition: none !important;
+}
+
+html.cc-performance-lite :where(
+  .connection-banner,
+  .auth-security-strip,
+  .auth-panel,
+  .stock-adjustment__backdrop,
+  .settings-save-bar,
+  .photo-preview button > span,
+  .photo-preview button > b,
+  .gallery-nav
+) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 ion-alert { --background: var(--cc-surface); --backdrop-opacity: .48; --max-width: 430px; }
