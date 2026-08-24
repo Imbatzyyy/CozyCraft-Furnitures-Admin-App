@@ -38,12 +38,36 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
         }
 
         <section class="fulfillment-card cc-card">
-          <div class="cc-section-head"><div><p class="cc-eyebrow">DELIVERY PROGRESS</p><h2>{{ nextLabel(current.status) }}</h2></div><span class="payment-chip"><ion-icon [name]="current.payment_status === 'paid' ? 'checkmark-circle-outline' : 'time-outline'"></ion-icon>{{ titleCase(current.payment_status) }}</span></div>
+          <div class="cc-section-head">
+            <div>
+              <p class="cc-eyebrow">DELIVERY PROGRESS</p>
+              <h2>{{ nextLabel(current.status) }}</h2>
+              @if (currentStatusHistory(); as latestChange) {
+                <p class="fulfillment-last-change">
+                  <ion-icon name="time-outline" aria-hidden="true"></ion-icon>
+                  <span>Last changed</span>
+                  <time [attr.datetime]="latestChange.changed_at">{{ dateTime(latestChange.changed_at) }}</time>
+                  <em>PHT</em>
+                </p>
+              }
+            </div>
+            <span class="payment-chip"><ion-icon [name]="current.payment_status === 'paid' ? 'checkmark-circle-outline' : 'time-outline'"></ion-icon>{{ titleCase(current.payment_status) }}</span>
+          </div>
           <ol class="fulfillment-track">
             @for (step of fulfillmentSteps; track step; let index = $index) {
               <li [class.is-complete]="stepComplete(current.status, step)" [class.is-current]="current.status === step">
                 <span>@if (stepComplete(current.status, step)) { <ion-icon name="checkmark-outline"></ion-icon> } @else { {{ index + 1 }} }</span>
-                <div><b>{{ titleCase(step) }}</b>@if (historyFor(step); as history) { <small>{{ dateTime(history.changed_at) }}</small> }</div>
+                <div>
+                  <b>{{ titleCase(step) }}</b>
+                  @if (historyFor(step); as history) {
+                    <small>
+                      <time [attr.datetime]="history.changed_at" [attr.title]="dateTime(history.changed_at)">
+                        <span>{{ statusDay(history.changed_at) }}</span>
+                        <span>{{ statusClock(history.changed_at) }}</span>
+                      </time>
+                    </small>
+                  }
+                </div>
               </li>
             }
           </ol>
@@ -119,6 +143,10 @@ export class OrderDetailPage {
   readonly payment = computed(() => this.order() ? currentPayment(this.order()!) : undefined);
   readonly financialAccess = computed(() => canManageFinancials(this.auth.role()));
   readonly availableStatuses = computed(() => this.order() ? allowedFulfillmentStatuses(this.order()!.status).filter((status) => status !== 'cancelled') : []);
+  readonly currentStatusHistory = computed(() => {
+    const current = this.order();
+    return current ? this.latestHistoryFor(current.status) : undefined;
+  });
   readonly nextStatus = computed<OrderStatus | null>(() => {
     const current = this.order()?.status;
     if (!current) return null;
@@ -154,10 +182,30 @@ export class OrderDetailPage {
   nextLabel(status: OrderStatus) {
     return ({ pending: 'Begin fulfillment', processing: 'Mark as packed', packed: 'Mark as shipped', shipped: 'Mark as delivered', delivered: 'Delivered with care', cancelled: 'Order cancelled' })[status];
   }
-  historyFor(status: OrderStatus) { return this.order()?.order_status_history?.find((item) => item.status === status); }
+  historyFor(status: OrderStatus) { return this.latestHistoryFor(status); }
+  statusDay(value: string) {
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(value));
+  }
+  statusClock(value: string) {
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(value));
+  }
   stepComplete(current: OrderStatus, step: OrderStatus) { return current !== 'cancelled' && this.fulfillmentSteps.indexOf(step) <= this.fulfillmentSteps.indexOf(current); }
   customerInitials(value: string | null | undefined) { return (value || 'CC').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
   addressLine() { const address = this.order()?.shipping_address; return address ? [address.line, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', ') : ''; }
+
+  private latestHistoryFor(status: OrderStatus) {
+    return this.order()?.order_status_history
+      ?.filter((item) => item.status === status)
+      .sort((left, right) => Date.parse(right.changed_at) - Date.parse(left.changed_at))[0];
+  }
 
   async changeStatus(status: OrderStatus) {
     const order = this.order();

@@ -98,6 +98,11 @@
 .cc-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 13px; }
 .cc-section-head h2 { margin: 6px 0 0; font: 600 23px/1 var(--cc-font-display); letter-spacing: -.03em; }
 .cc-section-head > div > p:not(.cc-eyebrow) { margin: 8px 0 0; color: var(--cc-ink-soft); font-size: 11px; line-height: 1.55; }
+.fulfillment-last-change { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 9px !important; color: var(--cc-ink-soft); font-size: 9px !important; line-height: 1.35 !important; }
+.fulfillment-last-change ion-icon { width: 12px; height: 12px; flex: 0 0 auto; color: #78906f; }
+.fulfillment-last-change span { font-weight: 720; }
+.fulfillment-last-change time { color: var(--cc-ink); font-weight: 650; }
+.fulfillment-last-change em { border-radius: 999px; background: var(--cc-muted); padding: 2px 5px; color: var(--cc-ink-soft); font-size: 7px; font-style: normal; font-weight: 800; letter-spacing: .08em; }
 .payment-chip { display: inline-flex; min-height: 29px; align-items: center; gap: 6px; border-radius: 999px; background: #e4ebe0; padding: 0 10px; color: #52704c; font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .fulfillment-track { display: grid; grid-template-columns: repeat(5, 1fr); margin: 22px 0 0; padding: 0; list-style: none; }
 .fulfillment-track li { position: relative; display: grid; justify-items: center; gap: 8px; color: #a9a198; text-align: center; }
@@ -108,9 +113,11 @@
 .fulfillment-track li.is-complete::before { background: var(--cc-ink); }
 .fulfillment-track li.is-complete > span { border-color: var(--cc-ink); background: var(--cc-ink); color: var(--cc-canvas); }
 .fulfillment-track li.is-current > span { box-shadow: 0 0 0 4px var(--cc-muted); }
-.fulfillment-track li div { display: grid; gap: 3px; }
-.fulfillment-track b { font-size: 11px; }
-.fulfillment-track small { display: none; color: var(--cc-ink-soft); font-size: 11px; }
+.fulfillment-track li div { display: grid; min-width: 0; gap: 3px; }
+.fulfillment-track b { font-size: clamp(8.5px, 2.5vw, 11px); }
+.fulfillment-track small { display: block; min-height: 24px; color: var(--cc-ink-soft); font-size: clamp(7.5px, 2vw, 9px); font-weight: 590; line-height: 1.25; }
+.fulfillment-track time { display: grid; gap: 1px; }
+.fulfillment-track time span { white-space: nowrap; }
 .fulfillment-actions { display: grid; gap: 9px; margin-top: 20px; border-top: 1px solid var(--cc-border); padding-top: 15px; }
 .fulfillment-actions ion-select, .return-actions ion-select { min-height: 52px; --padding-start: 12px; --padding-end: 12px; border: 1px solid var(--cc-border); border-radius: 14px; background: var(--cc-canvas); font-size: 12px; }
 .order-detail-grid { display: grid; gap: 13px; }
@@ -168,7 +175,6 @@
   .order-filters { width: 100%; margin-inline: 0; padding-inline: 0; }
   .order-results-meta { grid-column: 1 / -1; }
   .fulfillment-actions { grid-template-columns: 1fr auto; align-items: end; }
-  .fulfillment-track small { display: block; }
   .cancellation-banner { grid-template-columns: 1fr auto; align-items: center; }
 }
 @media (min-width: 900px) {
@@ -193,4 +199,11 @@
   .order-total strong { font-size: 13px; }
   .item-count { display: none; }
   .order-card__footer { grid-template-columns: minmax(0, 1fr) 15px; }
+  .fulfillment-card { padding-inline: 12px; }
+  .fulfillment-track { margin-top: 19px; }
+  .fulfillment-track li { gap: 7px; }
+  .fulfillment-track li > span { width: 25px; height: 25px; }
+  .fulfillment-track li::before { top: 12px; }
+  .fulfillment-track b { font-size: 8px; }
+  .fulfillment-track small { font-size: 7px; }
 }
