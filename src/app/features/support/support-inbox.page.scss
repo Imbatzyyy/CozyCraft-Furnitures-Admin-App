@@ -35,7 +35,7 @@ button, input { font: inherit; -webkit-tap-highlight-color: transparent; }
 .inbox-search input::-webkit-search-cancel-button { display: none; }
 .inbox-search button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 11px; background: transparent; color: #91897f; padding: 0; font-size: 18px; }
 .inbox-search button:active { background: var(--cc-muted, #eee8df); transform: scale(.94); }
-.scope-row { display: flex; width: calc(100% + 28px); gap: 6px; overflow-x: auto; margin-inline: -14px; padding: 0 14px 3px; scrollbar-width: none; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.scope-row { display: flex; width: 100%; gap: 6px; overflow-x: auto; margin-inline: 0; padding: 0 var(--cc-mobile-rail-inset) 3px; scroll-padding-inline: var(--cc-mobile-rail-inset); scrollbar-width: none; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
 .scope-row::-webkit-scrollbar { display: none; }
 .scope-row button { display: inline-flex; min-width: max-content; min-height: 38px; flex: 0 0 auto; align-items: center; gap: 7px; scroll-snap-align: start; border: 1px solid var(--cc-border, #ded7cd); border-radius: 999px; background: var(--cc-surface, #fffdf9); color: var(--cc-ink-soft, #736c63); padding: 0 10px 0 12px; font-size: 10px; font-weight: 760; }
 .scope-row button i { display: grid; min-width: 18px; height: 18px; place-items: center; border-radius: 999px; background: var(--cc-muted, #eee8df); color: #7d756b; padding: 0 4px; font: normal 800 8px/1 var(--cc-font-body, system-ui, sans-serif); }

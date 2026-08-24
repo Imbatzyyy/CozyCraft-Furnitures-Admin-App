@@ -312,10 +312,10 @@
 .metric-strip {
   display: flex;
   gap: 9px;
-  margin: 12px -14px 0;
+  margin: 12px 0 0;
   overflow-x: auto;
-  padding: 0 14px 3px;
-  scroll-padding-inline: 14px;
+  padding: 0 var(--cc-mobile-rail-inset) 3px;
+  scroll-padding-inline: var(--cc-mobile-rail-inset);
   scrollbar-width: none;
   scroll-snap-type: x proximity;
 }

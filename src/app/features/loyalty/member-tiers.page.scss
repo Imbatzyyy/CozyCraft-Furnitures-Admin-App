@@ -22,7 +22,7 @@
 .control-row button { display: grid; min-height: 40px; place-items: center; border: 0; border-radius: 12px; background: var(--cc-ink); color: white; }
 .control-row ion-icon { font-size: 18px; }
 .is-spinning { animation: spin .8s linear infinite; }
-.tier-rail { display: flex; gap: 7px; overflow-x: auto; padding: 1px 0 3px; scrollbar-width: none; }
+.tier-rail { display: flex; gap: 7px; overflow-x: auto; padding: 1px var(--cc-mobile-rail-inset) 3px; scroll-padding-inline: var(--cc-mobile-rail-inset); scrollbar-width: none; }
 .tier-rail::-webkit-scrollbar { display: none; }
 .tier-rail button { display: inline-flex; min-height: 38px; flex: 0 0 auto; align-items: center; gap: 7px; border: 1px solid var(--cc-border); border-radius: 999px; background: var(--cc-surface); color: var(--cc-ink-soft); padding: 0 13px; font-size: 10px; font-weight: 750; }
 .tier-rail button.is-active { border-color: #292622; background: #292622; color: #fff; }

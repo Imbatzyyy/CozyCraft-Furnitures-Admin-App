@@ -34,7 +34,7 @@ button { font: inherit; -webkit-tap-highlight-color: transparent; touch-action: 
 .desk-metrics span { display: grid; color: rgb(255 255 255 / .42); font-size: 8px; white-space: nowrap; }
 .desk-metrics strong { color: #fff; font-size: 12px; }
 
-.filter-rail { display: flex; gap: 7px; overflow-x: auto; margin: 14px -16px 0; padding: 0 16px 4px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.filter-rail { display: flex; gap: 7px; overflow-x: auto; margin: 14px 0 0; padding: 0 var(--cc-mobile-rail-inset) 4px; scroll-padding-inline: var(--cc-mobile-rail-inset); scrollbar-width: none; scroll-snap-type: x proximity; }
 .filter-rail::-webkit-scrollbar { display: none; }
 .filter-rail button { display: inline-flex; min-width: max-content; min-height: 44px; flex: 0 0 auto; align-items: center; gap: 6px; scroll-snap-align: start; border: 1px solid var(--cc-border, #ded7cd); border-radius: 999px; background: var(--cc-surface, #fffdf9); color: var(--cc-ink-soft, #736c63); padding: 0 11px; font-size: 10px; font-weight: 750; }
 .filter-rail button ion-icon { font-size: 14px; }

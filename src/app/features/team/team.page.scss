@@ -491,8 +491,9 @@ button {
   display: flex;
   gap: 7px;
   overflow-x: auto;
-  margin: 8px -14px 0;
-  padding: 0 14px 4px;
+  margin: 8px 0 0;
+  padding: 0 var(--cc-mobile-rail-inset) 4px;
+  scroll-padding-inline: var(--cc-mobile-rail-inset);
   scrollbar-width: none;
   scroll-snap-type: x proximity;
 }

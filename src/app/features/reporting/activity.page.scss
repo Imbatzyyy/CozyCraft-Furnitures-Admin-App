@@ -28,7 +28,7 @@ button { font: inherit; -webkit-tap-highlight-color: transparent; touch-action: 
 .activity-hero__metrics span { color: rgb(255 255 255 / .42); font-size: 8px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .activity-hero__metrics .is-alert strong { color: #d7a993; }
 
-.scope-rail { display: flex; gap: 7px; overflow-x: auto; margin: 13px -16px 0; padding: 0 16px 4px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.scope-rail { display: flex; gap: 7px; overflow-x: auto; margin: 13px 0 0; padding: 0 var(--cc-mobile-rail-inset) 4px; scroll-padding-inline: var(--cc-mobile-rail-inset); scrollbar-width: none; scroll-snap-type: x proximity; }
 .scope-rail::-webkit-scrollbar { display: none; }
 .scope-rail button { display: inline-flex; min-width: max-content; min-height: 43px; flex: 0 0 auto; align-items: center; gap: 6px; scroll-snap-align: start; border: 1px solid var(--cc-border, #ded7cd); border-radius: 999px; background: var(--cc-surface, #fffdf9); color: var(--cc-ink-soft, #736c63); padding: 0 10px; font-size: 9px; font-weight: 800; }
 .scope-rail ion-icon { font-size: 13px; }
@@ -52,7 +52,7 @@ button { font: inherit; -webkit-tap-highlight-color: transparent; touch-action: 
 .filter-panel > header > button { min-width: 58px; min-height: 40px; border: 1px solid var(--cc-border, #ded7cd); border-radius: 12px; background: transparent; color: var(--cc-ink-soft, #736c63); font-size: 9px; font-weight: 800; }
 .filter-group { display: grid; gap: 7px; margin-top: 12px; }
 .filter-group > span { color: var(--cc-ink-soft, #736c63); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-.filter-group > div { display: flex; gap: 6px; overflow-x: auto; margin-right: -14px; padding-right: 14px; scrollbar-width: none; }
+.filter-group > div { display: flex; gap: 6px; overflow-x: auto; margin-inline: 0; padding-inline: var(--cc-mobile-rail-inset); scroll-padding-inline: var(--cc-mobile-rail-inset); scrollbar-width: none; }
 .filter-group > div::-webkit-scrollbar { display: none; }
 .filter-group button { min-width: max-content; min-height: 39px; flex: 0 0 auto; border: 1px solid var(--cc-border, #ded7cd); border-radius: 999px; background: rgb(255 255 255 / .58); color: var(--cc-ink-soft, #736c63); padding: 0 11px; font-size: 9px; font-weight: 750; }
 .filter-group button.is-active { border-color: #2c2925; background: #2c2925; color: #fff; }

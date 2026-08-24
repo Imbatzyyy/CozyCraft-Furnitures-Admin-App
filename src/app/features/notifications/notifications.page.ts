@@ -184,7 +184,7 @@ type NotificationFilter = 'all' | 'unread';
     .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #b78b70; }
     .live-dot--on { background: #a9c39d; box-shadow: 0 0 0 3px rgb(169 195 157 / .12); }
     .feed-tools { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-    .filter-row { display: inline-flex; gap: 4px; overflow-x: auto; border: 1px solid var(--cc-border, #ded7cd); border-radius: 14px; background: color-mix(in srgb, var(--cc-surface, #fffdf9) 80%, transparent); padding: 4px; scrollbar-width: none; }
+    .filter-row { display: inline-flex; gap: 4px; overflow-x: auto; margin-inline: var(--cc-mobile-rail-inset); border: 1px solid var(--cc-border, #ded7cd); border-radius: 14px; background: color-mix(in srgb, var(--cc-surface, #fffdf9) 80%, transparent); padding: 4px; scroll-padding-inline: 4px; scrollbar-width: none; }
     .filter-row::-webkit-scrollbar { display: none; }
     .filter-row button { display: inline-flex; min-height: 44px; align-items: center; gap: 7px; border: 0; border-radius: 10px; background: transparent; color: var(--cc-ink-soft, #736c63); padding: 0 11px; font-size: 12px; font-weight: 750; white-space: nowrap; }
     .filter-row button span { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 999px; background: var(--cc-muted, #eee8df); padding: 0 6px; font-size: 11px; }
