@@ -129,8 +129,8 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
             @if (service.detailLoading()) {
               <div class="sheet-loading"><ion-spinner name="crescent"></ion-spinner><span>Loading protected reward history…</span></div>
             } @else {
-              <section class="history-block">
-                <header><div><small>POINT HISTORY</small><h3>Recent activity</h3></div><span>{{ service.transactions().length }}</span></header>
+              <section class="history-block" [class.is-loading]="service.transactionLoading()" [attr.aria-busy]="service.transactionLoading()">
+                <header><div><small>POINT HISTORY</small><h3>Recent activity</h3></div><span>@if (service.transactionLoading()) { <ion-spinner name="crescent"></ion-spinner> } @else { {{ service.transactionTotal() }} }</span></header>
                 @if (service.transactions().length === 0) { <p class="empty-copy">No point activity recorded yet.</p> }
                 @for (transaction of service.transactions(); track transaction.id) {
                   <article class="history-row">
@@ -139,10 +139,17 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
                     <strong [class.is-positive]="transaction.points > 0">{{ transaction.points > 0 ? '+' : '' }}{{ transaction.points }}</strong>
                   </article>
                 }
+                @if (service.transactionTotal() > activityPageSize) {
+                  <nav class="history-pagination" aria-label="Recent activity pages">
+                    <button type="button" (click)="goToActivityPage(activityPage() - 1)" [disabled]="activityPage() === 0 || service.transactionLoading()" aria-label="Previous activity page"><ion-icon name="chevron-back-outline"></ion-icon></button>
+                    <span>Page {{ activityPage() + 1 }} of {{ activityPages() }}</span>
+                    <button type="button" (click)="goToActivityPage(activityPage() + 1)" [disabled]="activityPage() + 1 >= activityPages() || service.transactionLoading()" aria-label="Next activity page"><ion-icon name="chevron-forward-outline"></ion-icon></button>
+                  </nav>
+                }
               </section>
 
-              <section class="history-block">
-                <header><div><small>REWARDS</small><h3>Redemption codes</h3></div><span>{{ service.redemptions().length }}</span></header>
+              <section class="history-block" [class.is-loading]="service.redemptionLoading()" [attr.aria-busy]="service.redemptionLoading()">
+                <header><div><small>REWARDS</small><h3>Redemption codes</h3></div><span>@if (service.redemptionLoading()) { <ion-spinner name="crescent"></ion-spinner> } @else { {{ service.redemptionTotal() }} }</span></header>
                 @if (service.redemptions().length === 0) { <p class="empty-copy">No rewards redeemed by this member.</p> }
                 @for (reward of service.redemptions(); track reward.id) {
                   <article class="reward-row">
@@ -150,6 +157,13 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
                     <span [class]="'reward-status reward-status--' + reward.status">{{ titleCase(reward.status) }}</span>
                     <small>Expires {{ shortDate(reward.expires_at) }}</small>
                   </article>
+                }
+                @if (service.redemptionTotal() > rewardPageSize) {
+                  <nav class="history-pagination" aria-label="Reward redemption pages">
+                    <button type="button" (click)="goToRewardPage(rewardPage() - 1)" [disabled]="rewardPage() === 0 || service.redemptionLoading()" aria-label="Previous reward page"><ion-icon name="chevron-back-outline"></ion-icon></button>
+                    <span>Page {{ rewardPage() + 1 }} of {{ rewardPages() }}</span>
+                    <button type="button" (click)="goToRewardPage(rewardPage() + 1)" [disabled]="rewardPage() + 1 >= rewardPages() || service.redemptionLoading()" aria-label="Next reward page"><ion-icon name="chevron-forward-outline"></ion-icon></button>
+                  </nav>
                 }
               </section>
             }
@@ -172,12 +186,18 @@ export class MemberTiersPage implements OnDestroy {
   protected readonly shortDate = shortDate;
   protected readonly dateTime = dateTime;
   protected readonly pageSize = 12;
+  protected readonly activityPageSize = 6;
+  protected readonly rewardPageSize = 5;
   protected readonly page = signal(0);
+  protected readonly activityPage = signal(0);
+  protected readonly rewardPage = signal(0);
   protected readonly tier = signal<TierFilter>('all');
   protected readonly sort = signal<LoyaltySort>('points');
   protected readonly query = signal('');
   protected readonly selected = signal<LoyaltyMember | null>(null);
   protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.service.total() / this.pageSize)));
+  protected readonly activityPages = computed(() => Math.max(1, Math.ceil(this.service.transactionTotal() / this.activityPageSize)));
+  protected readonly rewardPages = computed(() => Math.max(1, Math.ceil(this.service.redemptionTotal() / this.rewardPageSize)));
   protected readonly visiblePoints = computed(() => this.service.members().reduce((sum, item) => sum + item.points_balance, 0));
   private loadSequence = 0;
 
@@ -229,10 +249,12 @@ export class MemberTiersPage implements OnDestroy {
   }
 
   protected async openMember(member: LoyaltyMember) {
+    this.activityPage.set(0);
+    this.rewardPage.set(0);
     this.selected.set(member);
     await this.native.tap();
     try {
-      await this.service.loadMemberHistory(member.user_id);
+      await this.service.loadMemberHistory(member.user_id, this.activityPageSize, this.rewardPageSize);
     } catch (error: unknown) {
       await this.toast.show(this.errorMessage(error, 'Reward history could not be loaded.'), 'danger');
     }
@@ -240,6 +262,39 @@ export class MemberTiersPage implements OnDestroy {
 
   protected closeMember() {
     this.selected.set(null);
+    this.activityPage.set(0);
+    this.rewardPage.set(0);
+    this.service.clearMemberHistory();
+  }
+
+  protected async goToActivityPage(value: number) {
+    const member = this.selected();
+    const next = Math.max(0, Math.min(this.activityPages() - 1, value));
+    if (!member || next === this.activityPage() || this.service.transactionLoading()) return;
+    const current = this.activityPage();
+    this.activityPage.set(next);
+    void this.native.tap();
+    try {
+      await this.service.loadTransactionPage(member.user_id, next, this.activityPageSize);
+    } catch (error: unknown) {
+      this.activityPage.set(current);
+      await this.toast.show(this.errorMessage(error, 'Recent activity could not be loaded.'), 'danger');
+    }
+  }
+
+  protected async goToRewardPage(value: number) {
+    const member = this.selected();
+    const next = Math.max(0, Math.min(this.rewardPages() - 1, value));
+    if (!member || next === this.rewardPage() || this.service.redemptionLoading()) return;
+    const current = this.rewardPage();
+    this.rewardPage.set(next);
+    void this.native.tap();
+    try {
+      await this.service.loadRedemptionPage(member.user_id, next, this.rewardPageSize);
+    } catch (error: unknown) {
+      this.rewardPage.set(current);
+      await this.toast.show(this.errorMessage(error, 'Reward redemptions could not be loaded.'), 'danger');
+    }
   }
 
   protected tierProgress(member: LoyaltyMember) {

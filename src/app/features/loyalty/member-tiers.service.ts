@@ -75,8 +75,16 @@ export class MemberTiersService {
   readonly total = signal(0);
   readonly loading = signal(false);
   readonly detailLoading = signal(false);
+  readonly transactionLoading = signal(false);
+  readonly redemptionLoading = signal(false);
   readonly transactions = signal<LoyaltyTransaction[]>([]);
+  readonly transactionTotal = signal(0);
   readonly redemptions = signal<LoyaltyRedemption[]>([]);
+  readonly redemptionTotal = signal(0);
+
+  private activeHistoryUserId: string | null = null;
+  private transactionSequence = 0;
+  private redemptionSequence = 0;
 
   constructor(private readonly connection: SupabaseAdminService) {}
 
@@ -156,39 +164,83 @@ export class MemberTiersService {
     }
   }
 
-  async loadMemberHistory(userId: string) {
+  async loadMemberHistory(userId: string, transactionPageSize: number, redemptionPageSize: number) {
+    this.activeHistoryUserId = userId;
+    this.transactionSequence += 1;
+    this.redemptionSequence += 1;
     this.detailLoading.set(true);
     this.transactions.set([]);
+    this.transactionTotal.set(0);
     this.redemptions.set([]);
+    this.redemptionTotal.set(0);
     try {
-      const [transactionResult, redemptionResult] = await Promise.all([
-        this.client
-          .from('mobile_loyalty_transactions')
-          .select('id,kind,points,description,created_at,expires_at')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20),
-        this.client
-          .from('mobile_loyalty_redemptions')
-          .select('id,points_cost,discount_amount,status,code,created_at,expires_at,used_at')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20),
+      await Promise.all([
+        this.loadTransactionPage(userId, 0, transactionPageSize),
+        this.loadRedemptionPage(userId, 0, redemptionPageSize),
       ]);
-      const error = transactionResult.error ?? redemptionResult.error;
+    } finally {
+      if (this.activeHistoryUserId === userId) this.detailLoading.set(false);
+    }
+  }
+
+  async loadTransactionPage(userId: string, page: number, pageSize: number) {
+    const sequence = ++this.transactionSequence;
+    this.transactionLoading.set(true);
+    try {
+      const first = Math.max(0, page) * pageSize;
+      const { data, error, count } = await this.client
+        .from('mobile_loyalty_transactions')
+        .select('id,kind,points,description,created_at,expires_at', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(first, first + pageSize - 1);
       if (error) throw error;
-      this.transactions.set((transactionResult.data ?? []).map((row) => ({
+      if (sequence !== this.transactionSequence || this.activeHistoryUserId !== userId) return;
+      this.transactions.set((data ?? []).map((row) => ({
         ...row,
         points: Number(row.points),
       })) as LoyaltyTransaction[]);
-      this.redemptions.set((redemptionResult.data ?? []).map((row) => ({
+      this.transactionTotal.set(count ?? data?.length ?? 0);
+    } finally {
+      if (sequence === this.transactionSequence) this.transactionLoading.set(false);
+    }
+  }
+
+  async loadRedemptionPage(userId: string, page: number, pageSize: number) {
+    const sequence = ++this.redemptionSequence;
+    this.redemptionLoading.set(true);
+    try {
+      const first = Math.max(0, page) * pageSize;
+      const { data, error, count } = await this.client
+        .from('mobile_loyalty_redemptions')
+        .select('id,points_cost,discount_amount,status,code,created_at,expires_at,used_at', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(first, first + pageSize - 1);
+      if (error) throw error;
+      if (sequence !== this.redemptionSequence || this.activeHistoryUserId !== userId) return;
+      this.redemptions.set((data ?? []).map((row) => ({
         ...row,
         points_cost: Number(row.points_cost),
         discount_amount: Number(row.discount_amount),
       })) as LoyaltyRedemption[]);
+      this.redemptionTotal.set(count ?? data?.length ?? 0);
     } finally {
-      this.detailLoading.set(false);
+      if (sequence === this.redemptionSequence) this.redemptionLoading.set(false);
     }
+  }
+
+  clearMemberHistory() {
+    this.activeHistoryUserId = null;
+    this.transactionSequence += 1;
+    this.redemptionSequence += 1;
+    this.detailLoading.set(false);
+    this.transactionLoading.set(false);
+    this.redemptionLoading.set(false);
+    this.transactions.set([]);
+    this.transactionTotal.set(0);
+    this.redemptions.set([]);
+    this.redemptionTotal.set(0);
   }
 
   private async loadProfiles(ids: string[]) {
