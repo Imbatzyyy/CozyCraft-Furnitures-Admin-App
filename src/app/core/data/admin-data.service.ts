@@ -82,6 +82,7 @@ const ACTIVITY_LOG_PAGE_SIZE = 72;
 const CLIENT_ERROR_PAGE_SIZE = 16;
 const ACTIVITY_REFRESH_PAGE_SIZE = 24;
 const CLIENT_ERROR_REFRESH_PAGE_SIZE = 8;
+const NOTIFICATION_PAGE_SIZE = 30;
 
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
@@ -107,6 +108,12 @@ export class AdminDataService {
   private readonly returnsState = signal<ReturnRequest[]>([]);
   private readonly movementsState = signal<InventoryMovement[]>([]);
   private readonly notificationsState = signal<AdminNotification[]>([]);
+  private readonly notificationTotalState = signal(0);
+  private readonly notificationUnreadState = signal(0);
+  private readonly notificationHasMoreState = signal(false);
+  private readonly notificationLoadingMoreState = signal(false);
+  private notificationRawOffset = 0;
+  private notificationRawTotal = 0;
   private readonly activityState = signal<ActivityLog[]>([]);
   private readonly clientErrorsState = signal<ClientErrorEvent[]>([]);
   private readonly activityLoadingState = signal(false);
@@ -133,6 +140,9 @@ export class AdminDataService {
   readonly returnRequests = this.returnsState.asReadonly();
   readonly inventoryMovements = this.movementsState.asReadonly();
   readonly notifications = this.notificationsState.asReadonly();
+  readonly notificationTotal = this.notificationTotalState.asReadonly();
+  readonly notificationHasMore = this.notificationHasMoreState.asReadonly();
+  readonly notificationLoadingMore = this.notificationLoadingMoreState.asReadonly();
   readonly activity = this.activityState.asReadonly();
   readonly clientErrors = this.clientErrorsState.asReadonly();
   readonly activityLoading = this.activityLoadingState.asReadonly();
@@ -148,7 +158,7 @@ export class AdminDataService {
   readonly lastSync = this.lastSyncState.asReadonly();
   readonly error = this.errorState.asReadonly();
 
-  readonly unreadNotifications = computed(() => this.notificationsState().filter((item) => !item.read_at).length);
+  readonly unreadNotifications = this.notificationUnreadState.asReadonly();
   readonly urgentTickets = computed(() => this.ticketsState().filter((item) =>
     ['open', 'in_progress'].includes(item.status) && ['high', 'urgent'].includes(item.priority)).length);
   readonly lowStockProducts = computed(() => {
@@ -488,32 +498,76 @@ export class AdminDataService {
     const request = this.beginRequest('notifications', generation);
     const userId = this.auth.userId();
     if (!userId) return;
-    const rows = await this.pagedRows((from, to) => this.client
-      .from('admin_notifications')
-      .select('id,kind,title,message,entity_type,entity_id,route,created_at')
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(from, to));
-    const ids = rows.map((row) => row.id);
-    const readRows: Array<{ notification_id: number; read_at: string | null; dismissed_at: string | null }> = [];
-    for (let index = 0; index < ids.length; index += 500) {
-      const { data, error } = await this.client
+    this.notificationLoadingMoreState.set(false);
+    const requestedSize = Math.max(NOTIFICATION_PAGE_SIZE, this.notificationRawOffset);
+    const [pageResult, readCountResult, dismissedCountResult] = await Promise.all([
+      this.client
+        .from('admin_notifications')
+        .select('id,kind,title,message,entity_type,entity_id,route,created_at', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(0, requestedSize - 1),
+      this.client
         .from('admin_notification_reads')
-        .select('notification_id,read_at,dismissed_at')
+        .select('notification_id', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .in('notification_id', ids.slice(index, index + 500));
-      if (error) throw error;
-      readRows.push(...(data ?? []));
-    }
+        .not('read_at', 'is', null)
+        .is('dismissed_at', null),
+      this.client
+        .from('admin_notification_reads')
+        .select('notification_id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .not('dismissed_at', 'is', null),
+    ]);
+    if (pageResult.error) throw pageResult.error;
+    if (readCountResult.error) throw readCountResult.error;
+    if (dismissedCountResult.error) throw dismissedCountResult.error;
+
+    const rows = pageResult.data ?? [];
+    const notifications = await this.hydrateNotificationRows(rows, userId);
     if (!this.requestIsCurrent('notifications', request, generation) || this.auth.userId() !== userId) return;
-    const readMap = new Map(readRows.map((row) => [row.notification_id, row]));
-    this.notificationsState.set(rows
-      .map((row) => ({
-        ...row,
-        read_at: readMap.get(row.id)?.read_at ?? null,
-        dismissed_at: readMap.get(row.id)?.dismissed_at ?? null,
-      }))
-      .filter((row) => !row.dismissed_at) as AdminNotification[]);
+    const activeTotal = Math.max(0, (pageResult.count ?? rows.length) - (dismissedCountResult.count ?? 0));
+    const unreadTotal = Math.max(0, activeTotal - (readCountResult.count ?? 0));
+    this.notificationsState.set(notifications);
+    this.notificationTotalState.set(activeTotal);
+    this.notificationUnreadState.set(unreadTotal);
+    this.notificationRawOffset = rows.length;
+    this.notificationRawTotal = pageResult.count ?? rows.length;
+    this.notificationHasMoreState.set(this.notificationRawOffset < this.notificationRawTotal);
+    this.notificationLoadingMoreState.set(false);
+  }
+
+  async loadMoreNotifications(generation = this.workspaceGeneration) {
+    if (this.notificationLoadingMoreState() || !this.notificationHasMoreState()) return;
+    const request = this.beginRequest('notifications', generation);
+    const userId = this.auth.userId();
+    if (!userId) return;
+    this.notificationLoadingMoreState.set(true);
+    try {
+      const from = this.notificationRawOffset;
+      const { data, error } = await this.client
+        .from('admin_notifications')
+        .select('id,kind,title,message,entity_type,entity_id,route,created_at')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, from + NOTIFICATION_PAGE_SIZE - 1);
+      if (error) throw error;
+      const rows = data ?? [];
+      const notifications = await this.hydrateNotificationRows(rows, userId);
+      if (!this.requestIsCurrent('notifications', request, generation) || this.auth.userId() !== userId) return;
+      const merged = new Map(this.notificationsState().map((notification) => [notification.id, notification]));
+      for (const notification of notifications) merged.set(notification.id, notification);
+      this.notificationsState.set([...merged.values()].sort((left, right) => {
+        const createdDifference = Date.parse(right.created_at) - Date.parse(left.created_at);
+        return createdDifference || right.id - left.id;
+      }));
+      this.notificationRawOffset = from + rows.length;
+      this.notificationHasMoreState.set(this.notificationRawOffset < this.notificationRawTotal);
+    } finally {
+      if (this.requestIsCurrent('notifications', request, generation)) {
+        this.notificationLoadingMoreState.set(false);
+      }
+    }
   }
 
   async loadSettings(generation = this.workspaceGeneration) {
@@ -693,15 +747,23 @@ export class AdminDataService {
   async markNotificationRead(notificationId: number, read = true) {
     const userId = this.auth.userId();
     if (!userId) return;
+    const current = this.notificationsState().find((item) => item.id === notificationId);
+    const readAt = read ? new Date().toISOString() : null;
     const { error } = await this.client.from('admin_notification_reads').upsert({
       notification_id: notificationId,
       user_id: userId,
-      read_at: read ? new Date().toISOString() : null,
+      read_at: readAt,
       dismissed_at: null,
     }, { onConflict: 'notification_id,user_id' });
     if (error) throw error;
     this.notificationsState.update((items) => items.map((item) =>
-      item.id === notificationId ? { ...item, read_at: read ? new Date().toISOString() : null } : item));
+      item.id === notificationId ? { ...item, read_at: readAt } : item));
+    if (current && Boolean(current.read_at) !== read) {
+      this.notificationUnreadState.update((count) => Math.max(
+        0,
+        Math.min(this.notificationTotalState(), count + (read ? -1 : 1)),
+      ));
+    }
   }
 
   async markAllNotificationsRead() {
@@ -712,20 +774,36 @@ export class AdminDataService {
     const readAt = new Date().toISOString();
     if (this.auth.userId() === userId) {
       this.notificationsState.update((items) => items.map((item) => ({ ...item, read_at: item.read_at ?? readAt })));
+      this.notificationUnreadState.set(0);
     }
   }
 
   async dismissNotification(notificationId: number) {
+    await this.dismissNotifications([notificationId]);
+  }
+
+  async dismissNotifications(notificationIds: readonly number[]) {
     const userId = this.auth.userId();
     if (!userId) return;
-    const { error } = await this.client.from('admin_notification_reads').upsert({
+    const ids = [...new Set(notificationIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (ids.length === 0) return;
+    const current = new Map(this.notificationsState().map((item) => [item.id, item]));
+    const dismissedItems = ids.map((id) => current.get(id)).filter((item): item is AdminNotification => Boolean(item));
+    const dismissedUnread = dismissedItems.filter((item) => !item.read_at).length;
+    const now = new Date().toISOString();
+    const { error } = await this.client.from('admin_notification_reads').upsert(ids.map((notificationId) => ({
       notification_id: notificationId,
       user_id: userId,
-      read_at: new Date().toISOString(),
-      dismissed_at: new Date().toISOString(),
-    }, { onConflict: 'notification_id,user_id' });
+      read_at: now,
+      dismissed_at: now,
+    })), { onConflict: 'notification_id,user_id' });
     if (error) throw error;
-    this.notificationsState.update((items) => items.filter((item) => item.id !== notificationId));
+    const dismissedIds = new Set(ids);
+    this.notificationsState.update((items) => items.filter((item) => !dismissedIds.has(item.id)));
+    this.notificationTotalState.update((count) => Math.max(0, count - dismissedItems.length));
+    if (dismissedUnread) {
+      this.notificationUnreadState.update((count) => Math.max(0, count - dismissedUnread));
+    }
   }
 
   private connectRealtime(generation: number): Promise<boolean> {
@@ -786,7 +864,12 @@ export class AdminDataService {
         }
         this.scheduleRefresh('notifications', generation);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notification_reads' }, () => this.scheduleRefresh('notifications', generation))
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'admin_notification_reads',
+        filter: `user_id=eq.${this.auth.userId()}`,
+      }, () => this.scheduleRefresh('notifications', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, () => this.scheduleRefresh('settings', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_security_settings' }, () => {
         this.scheduleRefresh('settings', generation);
@@ -882,6 +965,12 @@ export class AdminDataService {
     this.returnsState.set([]);
     this.movementsState.set([]);
     this.notificationsState.set([]);
+    this.notificationTotalState.set(0);
+    this.notificationUnreadState.set(0);
+    this.notificationHasMoreState.set(false);
+    this.notificationLoadingMoreState.set(false);
+    this.notificationRawOffset = 0;
+    this.notificationRawTotal = 0;
     this.activityState.set([]);
     this.clientErrorsState.set([]);
     this.activityLoadingState.set(false);
@@ -1017,6 +1106,33 @@ export class AdminDataService {
     if (this.auth.role() === 'superadmin' && (knownTeamMember || isAdminRole(nextRole))) {
       this.scheduleRefresh('team', generation);
     }
+  }
+
+  private async hydrateNotificationRows(
+    rows: Array<Omit<AdminNotification, 'read_at' | 'dismissed_at'>>,
+    userId: string,
+  ): Promise<AdminNotification[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
+    const { data, error } = await this.client
+      .from('admin_notification_reads')
+      .select('notification_id,read_at,dismissed_at')
+      .eq('user_id', userId)
+      .in('notification_id', ids);
+    if (error) throw error;
+    const readRows = (data ?? []) as Array<{
+      notification_id: number;
+      read_at: string | null;
+      dismissed_at: string | null;
+    }>;
+    const readMap = new Map(readRows.map((row) => [row.notification_id, row]));
+    return rows
+      .map((row) => ({
+        ...row,
+        read_at: readMap.get(row.id)?.read_at ?? null,
+        dismissed_at: readMap.get(row.id)?.dismissed_at ?? null,
+      }))
+      .filter((row) => !row.dismissed_at);
   }
 
   private async pagedRows<T>(

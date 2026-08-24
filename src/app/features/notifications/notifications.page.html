@@ -1,0 +1,202 @@
+<main class="cc-page notification-page">
+  <section class="notification-hero" aria-labelledby="notification-title">
+    <header class="notification-hero__header">
+      <div class="notification-hero__copy">
+        <p class="hero-eyebrow"><span aria-hidden="true"></span> Live operations</p>
+        <h1 id="notification-title">Your quiet <em>signal desk.</em></h1>
+        <p>Important store activity, ordered newest first and kept private to your account.</p>
+      </div>
+
+      <button
+        class="mark-all"
+        type="button"
+        [disabled]="data.unreadNotifications() === 0 || markingAll()"
+        (click)="markAllRead()"
+        aria-label="Mark every notification as read"
+      >
+        @if (markingAll()) {
+          <ion-spinner name="crescent" />
+        } @else {
+          <ion-icon name="checkmark-done-outline" />
+        }
+        <span>Mark all read</span>
+      </button>
+    </header>
+
+    <div class="notification-hero__status" aria-label="Notification status">
+      <article>
+        <span class="status-icon status-icon--attention"><ion-icon name="notifications-outline" /></span>
+        <span>
+          <small>Needs attention</small>
+          <strong>{{ data.unreadNotifications() }}</strong>
+          <em>{{ data.unreadNotifications() === 1 ? 'unread update' : 'unread updates' }}</em>
+        </span>
+      </article>
+      <article>
+        <span class="status-icon"><ion-icon name="radio-outline" /></span>
+        <span>
+          <small>Workspace link</small>
+          <strong class="sync-state">
+            <i [class.is-live]="data.realtimeStatus() === 'live'"></i>
+            {{ data.realtimeStatus() === 'live' ? 'Live' : 'Syncing' }}
+          </strong>
+          <em>Automatic updates</em>
+        </span>
+      </article>
+    </div>
+  </section>
+
+  <section class="feed-controls" aria-label="Notification feed controls">
+    <div class="filter-rail" role="tablist" aria-label="Notification filters">
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="filter() === 'all'"
+        [class.is-active]="filter() === 'all'"
+        (click)="setFilter('all')"
+      >
+        All <span>{{ data.notificationTotal() }}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="filter() === 'unread'"
+        [class.is-active]="filter() === 'unread'"
+        (click)="setFilter('unread')"
+      >
+        Unread <span>{{ data.unreadNotifications() }}</span>
+      </button>
+    </div>
+
+    @if (readCount() > 0) {
+      <button class="clear-viewed" type="button" [disabled]="clearingViewed()" (click)="clearViewed()">
+        @if (clearingViewed()) {
+          <ion-spinner name="crescent" />
+        } @else {
+          <ion-icon name="archive-outline" />
+        }
+        <span>Dismiss viewed</span>
+      </button>
+    }
+  </section>
+
+  <div class="feed-caption" aria-live="polite">
+    <span>
+      Showing <strong>{{ visibleNotifications().length }}</strong>
+      {{ filter() === 'unread' ? 'unread' : 'loaded' }}
+    </span>
+    <span><i aria-hidden="true"></i> Newest first</span>
+  </div>
+
+  @if (data.loading() && data.notifications().length === 0) {
+    <section class="loading-shell" aria-label="Loading notifications">
+      <cc-skeleton-list [count]="5" />
+    </section>
+  } @else if (visibleNotifications().length === 0) {
+    <section class="empty-shell">
+      @if (data.notificationHasMore()
+        && ((filter() === 'unread' && data.unreadNotifications() > 0)
+          || (filter() === 'all' && data.notificationTotal() > 0))) {
+        <span class="empty-shell__icon"><ion-icon name="time-outline" /></span>
+        <h2>{{ filter() === 'unread' ? 'Unread updates are further back' : 'Earlier updates are available' }}</h2>
+        <p>Your newest page is clear. Load the earlier batch only when you need it.</p>
+        <button type="button" (click)="loadEarlier()" [disabled]="data.notificationLoadingMore()">
+          @if (data.notificationLoadingMore()) { <ion-spinner name="crescent" /> }
+          <span>Load earlier updates</span>
+        </button>
+      } @else {
+        <cc-empty-state
+          icon="checkmark-circle-outline"
+          [title]="filter() === 'unread' ? 'Nothing needs your attention' : 'You’re all caught up'"
+          [message]="filter() === 'unread'
+            ? 'Every loaded notification in your workspace has been reviewed.'
+            : 'New customer and operations activity will appear here in realtime.'"
+        />
+      }
+    </section>
+  } @else {
+    <section class="notification-feed" aria-label="Administrator notifications">
+      @for (notification of visibleNotifications(); track notification.id) {
+        <article class="notification-card" [class.is-unread]="!notification.read_at">
+          <button class="notification-card__main" type="button" (click)="openNotification(notification)">
+            <span class="kind-icon" [attr.data-kind]="notification.kind">
+              <ion-icon [name]="kindIcon(notification.kind)" />
+            </span>
+
+            <span class="notification-card__body">
+              <span class="notification-card__meta">
+                <span>{{ kindLabel(notification.kind) }}</span>
+                <i aria-hidden="true"></i>
+                <time [attr.datetime]="notification.created_at">{{ relativeTime(notification.created_at) }}</time>
+              </span>
+              <strong>{{ notification.title }}</strong>
+              <span class="notification-card__message">{{ notification.message }}</span>
+            </span>
+
+            <span class="notification-card__open" aria-hidden="true">
+              @if (!notification.read_at) { <i></i> }
+              <ion-icon name="chevron-forward-outline" />
+            </span>
+          </button>
+
+          <footer class="notification-card__footer">
+            <span class="destination-label">
+              <ion-icon name="arrow-redo-outline" />
+              Opens {{ destinationLabel(notification) }}
+            </span>
+            <span class="notification-actions">
+              <button
+                type="button"
+                [disabled]="isBusy(notification.id)"
+                (click)="toggleRead(notification)"
+                [attr.aria-label]="notification.read_at ? 'Mark notification unread' : 'Mark notification read'"
+              >
+                @if (isBusy(notification.id)) {
+                  <ion-spinner name="crescent" />
+                } @else {
+                  <ion-icon [name]="notification.read_at ? 'mail-unread-outline' : 'checkmark-outline'" />
+                }
+              </button>
+              <button
+                type="button"
+                class="dismiss-action"
+                [disabled]="isBusy(notification.id)"
+                (click)="dismiss(notification)"
+                aria-label="Dismiss notification"
+              >
+                <ion-icon name="close-outline" />
+              </button>
+            </span>
+          </footer>
+        </article>
+      }
+    </section>
+  }
+
+  @if (visibleNotifications().length > 0 && data.notificationHasMore()) {
+    <button
+      class="load-earlier"
+      type="button"
+      [disabled]="data.notificationLoadingMore()"
+      (click)="loadEarlier()"
+    >
+      <span class="load-earlier__icon">
+        @if (data.notificationLoadingMore()) {
+          <ion-spinner name="crescent" />
+        } @else {
+          <ion-icon name="time-outline" />
+        }
+      </span>
+      <span>
+        <strong>{{ data.notificationLoadingMore() ? 'Loading earlier updates…' : 'Load earlier updates' }}</strong>
+        <small>Older activity stays off-device until requested</small>
+      </span>
+      <ion-icon name="chevron-down-outline" />
+    </button>
+  }
+
+  <p class="privacy-note">
+    <ion-icon name="shield-checkmark-outline" />
+    <span><strong>Private activity state.</strong> Read and dismissed choices belong only to your administrator account.</span>
+  </p>
+</main>
