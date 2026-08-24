@@ -146,6 +146,11 @@ export class ExportService {
       drawBrandHeader(page, true);
       drawKpis(page);
       let cursor = drawTableHeader(page, pageSize[1] - 232);
+      const firstPageCapacity = Math.max(1, Math.floor((cursor - bottomLimit) / rowHeight));
+      const continuationCursor = pageSize[1] - 83 - tableHeaderHeight;
+      const continuationCapacity = Math.max(1, Math.floor((continuationCursor - bottomLimit) / rowHeight));
+      let rowsOnPage = 0;
+      let currentPageCapacity = firstPageCapacity;
 
       if (!report.rows.length) {
         page.drawRectangle({ x: margin, y: cursor - 54, width: tableWidth, height: 54, color: palette.surface });
@@ -153,11 +158,15 @@ export class ExportService {
       }
 
       report.rows.forEach((row, rowIndex) => {
-        if (cursor - rowHeight < bottomLimit) {
+        if (rowsOnPage >= currentPageCapacity) {
           page = document.addPage(pageSize);
           pages.push(page);
           drawBrandHeader(page, false);
           cursor = drawTableHeader(page, pageSize[1] - 83);
+          rowsOnPage = 0;
+          const remainingRows = report.rows.length - rowIndex;
+          const remainingPages = Math.max(1, Math.ceil(remainingRows / continuationCapacity));
+          currentPageCapacity = Math.ceil(remainingRows / remainingPages);
         }
 
         page.drawRectangle({ x: margin, y: cursor - rowHeight, width: tableWidth, height: rowHeight, color: rowIndex % 2 ? palette.surface : palette.canvas });
@@ -177,6 +186,7 @@ export class ExportService {
           x += width;
         });
         cursor -= rowHeight;
+        rowsOnPage += 1;
       });
 
       pages.forEach((target, index) => {

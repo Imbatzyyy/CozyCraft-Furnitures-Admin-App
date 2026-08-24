@@ -10,6 +10,8 @@
 /build
 /coverage
 /out-tsc
+/output
+/tmp
 .env*
 !.env.example
 /src/environments/environment.generated.ts
