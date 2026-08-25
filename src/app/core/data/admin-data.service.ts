@@ -1026,6 +1026,11 @@ export class AdminDataService {
     return Array.isArray(value) ? value[0] ?? null : value ?? null;
   }
 
+  private relationList<T>(value: T | T[] | null | undefined): T[] {
+    if (Array.isArray(value)) return value;
+    return value == null ? [] : [value];
+  }
+
   private mergeActivityRows<T extends { id: number; created_at: string }>(first: T[], second: T[]) {
     const rows = new Map<number, T>();
     for (const row of [...first, ...second]) rows.set(row.id, row);
@@ -1082,13 +1087,13 @@ export class AdminDataService {
     return {
       ...row,
       profiles: this.singleRelation(row.profiles),
-      order_items: (row.order_items ?? []).map((item) => ({
+      order_items: this.relationList(row.order_items).map((item) => ({
         ...item,
         unit_price: Number(item.unit_price),
         quantity: Number(item.quantity),
       })),
-      order_status_history: row.order_status_history ?? [],
-      payment_transactions: (row.payment_transactions ?? []).map((payment) => ({
+      order_status_history: this.relationList(row.order_status_history),
+      payment_transactions: this.relationList(row.payment_transactions).map((payment) => ({
         ...payment,
         amount: Number(payment.amount),
       })),
