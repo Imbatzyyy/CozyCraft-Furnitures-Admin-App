@@ -85,6 +85,9 @@
 
 .detail-back { margin: -8px 0 6px -10px; }
 .detail-back ion-back-button { --color: var(--cc-ink-soft); font-size: 11px; }
+.detail-refresh-warning { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 0 0 11px; border: 1px solid #dfc4b7; border-radius: 13px; background: #f4e6df; padding: 9px 10px; color: #7c4d3e; font-size: 10px; font-weight: 650; line-height: 1.4; }
+.detail-refresh-warning ion-icon { font-size: 16px; }
+.detail-refresh-warning button, .missing-order button { min-height: 34px; border: 0; border-radius: 10px; background: #7c4d3e; color: white; padding: 0 10px; font-size: 10px; font-weight: 780; }
 .order-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .order-detail-head h1 { font-size: clamp(31px, 8vw, 45px); }
 .cancellation-banner { display: grid; gap: 15px; margin-top: 18px; border: 1px solid #ddc8ac; border-radius: 20px; background: #f2e9dc; padding: 17px; color: #6f543a; }
@@ -164,7 +167,7 @@
 .missing-order > ion-icon { font-size: 34px; }
 .missing-order h1 { font: 600 30px/1 var(--cc-font-display); }
 .missing-order p { color: var(--cc-ink-soft); font-size: 12px; }
-.missing-order a { color: var(--cc-ink); font-size: 11px; font-weight: 750; }
+.missing-order a { display: block; width: fit-content; margin: 12px auto 0; color: var(--cc-ink); font-size: 11px; font-weight: 750; }
 
 @media (min-width: 620px) {
   .orders-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }

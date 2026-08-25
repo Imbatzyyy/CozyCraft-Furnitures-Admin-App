@@ -1,12 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, effect, signal, untracked } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AlertController, IonBackButton, IonButton, IonIcon, IonModal, IonSelect, IonSelectOption, IonTextarea } from '@ionic/angular/standalone';
+import { distinctUntilChanged, map } from 'rxjs';
 import { AdminAuthService } from '../../core/auth/admin-auth.service';
 import { AdminActionsService } from '../../core/data/admin-actions.service';
 import { AdminDataService } from '../../core/data/admin-data.service';
 import { OrderStatus, ReturnStatus } from '../../core/models/admin.models';
 import { allowedFulfillmentStatuses, allowedReturnStatuses, canManageFinancials } from '../../core/utils/admin-permissions';
-import { currentPayment, dateTime, money, titleCase } from '../../core/utils/format';
+import { currentPayment, dateTime, formatPht, money, parseTimestamp, titleCase } from '../../core/utils/format';
 import { NativePlatformService } from '../../core/native/native-platform.service';
 import { CozyToastService } from '../../shared/components/toast.service';
 import { SkeletonListComponent } from '../../shared/components/skeleton-list.component';
@@ -20,7 +22,14 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
   template: `
     <main class="cc-page order-detail-page">
       <div class="detail-back"><ion-back-button defaultHref="/app/orders" text="Orders"></ion-back-button></div>
-      @if (!data.initialized() && !order()) {
+      @if (detailError() && order()) {
+        <div class="detail-refresh-warning" role="status">
+          <ion-icon name="cloud-offline-outline" aria-hidden="true"></ion-icon>
+          <span>{{ detailError() }}</span>
+          <button type="button" (click)="reloadOrder()">Retry</button>
+        </div>
+      }
+      @if (awaitingOrder()) {
         <cc-skeleton-list [count]="6" />
       } @else if (order(); as current) {
         <header class="order-detail-head">
@@ -126,7 +135,13 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
           <ng-template><div class="action-sheet-form"><span class="action-sheet-form__icon"><ion-icon name="shield-outline"></ion-icon></span><p class="cc-eyebrow">PROTECTED ACTION</p><h2>Cancel {{ current.order_number }}?</h2><p>{{ current.payment_status === 'paid' && current.payment_method !== 'cod' ? 'The provider refund must succeed before the order and inventory are changed.' : 'Reserved inventory will be restored and the customer will be notified.' }}</p><label class="cc-field"><span>Cancellation reason</span><ion-textarea autoGrow="true" [value]="cancellationReason()" (ionInput)="cancellationReason.set($any($event).detail.value ?? '')" placeholder="Explain why this order must be cancelled"></ion-textarea></label><div class="action-sheet-form__buttons"><ion-button fill="outline" color="dark" (click)="cancellationOpen.set(false)">Keep order</ion-button><ion-button color="danger" [disabled]="cancellationReason().trim().length < 5 || working()" (click)="confirmCancellation()">{{ working() ? 'Processing…' : current.payment_status === 'paid' && current.payment_method !== 'cod' ? 'Cancel & refund' : 'Confirm cancellation' }}</ion-button></div></div></ng-template>
         </ion-modal>
       } @else {
-        <section class="cc-card missing-order"><ion-icon name="receipt-outline"></ion-icon><h1>Order not found</h1><p>It may have been removed or your role no longer has access.</p><a routerLink="/app/orders">Return to orders</a></section>
+        <section class="cc-card missing-order">
+          <ion-icon [name]="detailError() ? 'cloud-offline-outline' : 'receipt-outline'"></ion-icon>
+          <h1>{{ detailError() ? 'Order did not load' : 'Order not found' }}</h1>
+          <p>{{ detailError() || 'It may have been removed or your role no longer has access.' }}</p>
+          @if (detailError()) { <button type="button" (click)="reloadOrder()">Try again</button> }
+          <a routerLink="/app/orders">Return to orders</a>
+        </section>
       }
     </main>
   `,
@@ -137,9 +152,12 @@ export class OrderDetailPage {
   readonly dateTime = dateTime;
   readonly titleCase = titleCase;
   readonly fulfillmentSteps: OrderStatus[] = ['pending', 'processing', 'packed', 'shipped', 'delivered'];
-  readonly orderId = this.route.snapshot.paramMap.get('id') ?? '';
-  readonly order = computed(() => this.data.orders().find((item) => item.id === this.orderId));
-  readonly returnRequest = computed(() => this.data.returnRequests().find((item) => item.order_id === this.orderId));
+  readonly orderId = toSignal(this.route.paramMap.pipe(
+    map((params) => params.get('id') ?? ''),
+    distinctUntilChanged(),
+  ), { initialValue: this.route.snapshot.paramMap.get('id') ?? '' });
+  readonly order = computed(() => this.data.orders().find((item) => item.id === this.orderId()));
+  readonly returnRequest = computed(() => this.data.returnRequests().find((item) => item.order_id === this.orderId()));
   readonly payment = computed(() => this.order() ? currentPayment(this.order()!) : undefined);
   readonly financialAccess = computed(() => canManageFinancials(this.auth.role()));
   readonly availableStatuses = computed(() => this.order() ? allowedFulfillmentStatuses(this.order()!.status).filter((status) => status !== 'cancelled') : []);
@@ -158,25 +176,70 @@ export class OrderDetailPage {
   readonly cancellationReason = signal('');
   readonly returnNote = signal('');
   readonly working = signal(false);
-  private returnNoteHydrated = false;
+  readonly detailLoading = signal(true);
+  readonly detailError = signal('');
+  private readonly detailResolvedId = signal('');
+  readonly awaitingOrder = computed(() => !this.order() && (
+    !this.data.initialized()
+    || this.detailLoading()
+    || this.detailResolvedId() !== this.orderId()
+  ));
+  private hydratedReturnRequestId = '';
+  private detailLoadSequence = 0;
+  private inFlightOrderId = '';
 
   constructor(
     readonly data: AdminDataService,
     readonly auth: AdminAuthService,
     private readonly actions: AdminActionsService,
     private readonly route: ActivatedRoute,
-    private readonly router: Router,
     private readonly alerts: AlertController,
     private readonly toast: CozyToastService,
     private readonly native: NativePlatformService,
   ) {
     effect(() => {
+      const id = this.orderId();
+      if (!id) {
+        this.detailLoading.set(false);
+        this.detailResolvedId.set('');
+        return;
+      }
+      if (!this.auth.signedIn() || !this.data.initialized()) return;
+      untracked(() => void this.reloadOrder(id));
+    });
+    effect(() => {
       const request = this.returnRequest();
-      if (request && !this.returnNoteHydrated) {
+      if (request && request.id !== this.hydratedReturnRequestId) {
         this.returnNote.set(request.admin_note ?? '');
-        this.returnNoteHydrated = true;
+        this.hydratedReturnRequestId = request.id;
       }
     });
+  }
+
+  ionViewWillEnter() {
+    if (this.data.initialized()) void this.reloadOrder();
+  }
+
+  async reloadOrder(id = this.orderId()) {
+    if (!id || this.inFlightOrderId === id) return;
+    const request = ++this.detailLoadSequence;
+    this.inFlightOrderId = id;
+    this.detailError.set('');
+    this.detailLoading.set(!this.data.orders().some((order) => order.id === id));
+    try {
+      const order = await this.data.loadOrderDetail(id);
+      if (request !== this.detailLoadSequence || this.orderId() !== id) return;
+      if (!order) this.detailError.set('This order is no longer available to this administrator.');
+    } catch {
+      if (request !== this.detailLoadSequence || this.orderId() !== id) return;
+      this.detailError.set('Order details could not be refreshed. Check your connection and try again.');
+    } finally {
+      if (request === this.detailLoadSequence && this.orderId() === id) {
+        this.inFlightOrderId = '';
+        this.detailResolvedId.set(id);
+        this.detailLoading.set(false);
+      }
+    }
   }
 
   nextLabel(status: OrderStatus) {
@@ -184,18 +247,16 @@ export class OrderDetailPage {
   }
   historyFor(status: OrderStatus) { return this.latestHistoryFor(status); }
   statusDay(value: string) {
-    return new Intl.DateTimeFormat('en-PH', {
-      timeZone: 'Asia/Manila',
+    return formatPht(value, {
       month: 'short',
       day: 'numeric',
-    }).format(new Date(value));
+    });
   }
   statusClock(value: string) {
-    return new Intl.DateTimeFormat('en-PH', {
-      timeZone: 'Asia/Manila',
+    return formatPht(value, {
       hour: 'numeric',
       minute: '2-digit',
-    }).format(new Date(value));
+    });
   }
   stepComplete(current: OrderStatus, step: OrderStatus) { return current !== 'cancelled' && this.fulfillmentSteps.indexOf(step) <= this.fulfillmentSteps.indexOf(current); }
   customerInitials(value: string | null | undefined) { return (value || 'CC').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
@@ -204,7 +265,10 @@ export class OrderDetailPage {
   private latestHistoryFor(status: OrderStatus) {
     return this.order()?.order_status_history
       ?.filter((item) => item.status === status)
-      .sort((left, right) => Date.parse(right.changed_at) - Date.parse(left.changed_at))[0];
+      .sort((left, right) => (
+        (parseTimestamp(right.changed_at)?.getTime() ?? 0)
+        - (parseTimestamp(left.changed_at)?.getTime() ?? 0)
+      ))[0];
   }
 
   async changeStatus(status: OrderStatus) {

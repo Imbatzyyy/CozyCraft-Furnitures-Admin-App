@@ -96,6 +96,7 @@ export class AdminDataService {
   private completedSnapshotGeneration = 0;
   private readonly reconcileAfterSnapshot = new Set<number>();
   private readonly requestSequences = new Map<RefreshTarget, number>();
+  private readonly orderDetailSequences = new Map<string, number>();
   private accessRevalidation: Promise<void> | null = null;
   private readonly refreshTimers = new Map<RefreshTarget, ReturnType<typeof setTimeout>>();
   private readonly avatarSignedUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -353,16 +354,37 @@ export class AdminDataService {
       .order('id')
       .range(from, to)) as unknown as Order[];
     if (!this.requestIsCurrent('orders', request, generation)) return;
-    this.ordersState.set(rows.map((row) => ({
-      ...row,
-      profiles: this.singleRelation(row.profiles),
-      order_items: row.order_items ?? [],
-      order_status_history: row.order_status_history ?? [],
-      payment_transactions: row.payment_transactions ?? [],
-      subtotal: Number(row.subtotal),
-      delivery_fee: Number(row.delivery_fee),
-      total: Number(row.total),
-    })));
+    this.ordersState.set(rows.map((row) => this.normalizeOrder(row)));
+  }
+
+  /**
+   * Refreshes one complete order graph without downloading the whole order
+   * history. Detail routes use this after resume, reload, and status changes so
+   * a retained Ionic page cannot display a stale or partially populated row.
+   */
+  async loadOrderDetail(orderId: string, generation = this.workspaceGeneration): Promise<Order | null> {
+    const id = orderId.trim();
+    if (!id || !this.generationIsActive(generation)) return null;
+    const sequence = (this.orderDetailSequences.get(id) ?? 0) + 1;
+    this.orderDetailSequences.set(id, sequence);
+    const { data, error } = await this.client
+      .from('orders')
+      .select(orderGraphSelect)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!this.generationIsActive(generation) || this.orderDetailSequences.get(id) !== sequence) {
+      return this.ordersState().find((order) => order.id === id) ?? null;
+    }
+    if (!data) return null;
+
+    const order = this.normalizeOrder(data as unknown as Order);
+    this.ordersState.update((orders) => {
+      const existingIndex = orders.findIndex((item) => item.id === id);
+      if (existingIndex < 0) return [order, ...orders];
+      return orders.map((item, index) => index === existingIndex ? order : item);
+    });
+    return order;
   }
 
   async loadCustomers(generation = this.workspaceGeneration) {
@@ -957,6 +979,7 @@ export class AdminDataService {
     for (const timer of this.refreshTimers.values()) clearTimeout(timer);
     this.refreshTimers.clear();
     this.requestSequences.clear();
+    this.orderDetailSequences.clear();
     this.snapshotGeneration = 0;
     this.completedSnapshotGeneration = 0;
     this.reconcileAfterSnapshot.clear();
@@ -1053,6 +1076,27 @@ export class AdminDataService {
 
   private generationIsActive(generation: number) {
     return generation === this.workspaceGeneration && this.auth.signedIn();
+  }
+
+  private normalizeOrder(row: Order): Order {
+    return {
+      ...row,
+      profiles: this.singleRelation(row.profiles),
+      order_items: (row.order_items ?? []).map((item) => ({
+        ...item,
+        unit_price: Number(item.unit_price),
+        quantity: Number(item.quantity),
+      })),
+      order_status_history: row.order_status_history ?? [],
+      payment_transactions: (row.payment_transactions ?? []).map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount),
+      })),
+      shipping_address: row.shipping_address ?? {},
+      subtotal: Number(row.subtotal),
+      delivery_fee: Number(row.delivery_fee),
+      total: Number(row.total),
+    };
   }
 
   private beginRequest(target: RefreshTarget, generation: number) {

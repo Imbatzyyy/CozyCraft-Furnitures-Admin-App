@@ -35,14 +35,14 @@ export class AdminActionsService {
     const payload: Record<string, string> = { status };
     const { data: updated, error } = await this.client.from('orders').update(payload).eq('id', order.id).eq('status', order.status).select('id').maybeSingle();
     if (!error && !updated) return { error: 'This order changed on another device. Refresh and try again.' };
-    if (!error) await this.data.loadOrders();
+    if (!error) await this.data.loadOrderDetail(order.id);
     return { error: error?.message ?? null };
   }
 
   async markCodPaymentReceived(orderId: string): Promise<ActionResult> {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
     const { error } = await this.client.rpc('mark_cod_payment_received', { p_order_id: orderId });
-    if (!error) await this.data.loadOrders();
+    if (!error) await this.data.loadOrderDetail(orderId);
     return { error: error?.message ?? null };
   }
 
@@ -58,8 +58,8 @@ export class AdminActionsService {
       body: { orderId, reason: reason.trim(), action, note: note.trim() },
     });
     const message = this.functionError(data, error, 'The cancellation workflow could not be completed.');
-    if (message) await this.data.loadOrders().catch(() => undefined);
-    else await Promise.all([this.data.loadOrders(), this.data.loadProducts(), this.data.loadInventory()]);
+    if (message) await this.data.loadOrderDetail(orderId).catch(() => undefined);
+    else await Promise.all([this.data.loadOrderDetail(orderId), this.data.loadProducts(), this.data.loadInventory()]);
     return { data: data as Record<string, unknown> | undefined, error: message };
   }
 
@@ -91,7 +91,7 @@ export class AdminActionsService {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
     const { data, error } = await this.client.functions.invoke('send-refund-email', { body: { orderId } });
     const message = this.functionError(data, error, 'The refund confirmation could not be sent.');
-    if (!message) await this.data.loadOrders();
+    if (!message) await this.data.loadOrderDetail(orderId);
     return { data: data as Record<string, unknown> | undefined, error: message };
   }
 
