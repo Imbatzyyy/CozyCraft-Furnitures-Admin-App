@@ -1,5 +1,9 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 import {
   IonIcon,
   IonSearchbar,
@@ -30,6 +34,7 @@ interface PendingInventoryAdjustment {
   standalone: true,
   imports: [
     RouterLink,
+    PaginationComponent,
     IonIcon,
     IonSearchbar,
     IonSegment,
@@ -61,7 +66,7 @@ export class InventoryPage {
   readonly adjustment = signal<PendingInventoryAdjustment | null>(null);
   readonly adjustmentUnits = signal('1');
   readonly adjustmentReason = signal('');
-  readonly focusedProductId = signal(this.route.snapshot.queryParamMap.get('product') ?? '');
+  readonly focusedProductId = toSignal(this.route.queryParamMap.pipe(map((params) => params.get('product') ?? '')), { initialValue: this.route.snapshot.queryParamMap.get('product') ?? '' });
 
   readonly threshold = computed(() => this.data.settings().low_stock_threshold);
   readonly lowStock = computed(() => this.products().filter((product) => product.stock_quantity <= this.threshold()));
@@ -79,6 +84,7 @@ export class InventoryPage {
     const product = this.products().find((item) => item.id === adjustment.productId);
     return product ? { ...adjustment, product } : null;
   });
+  readonly pagination = createPagination(this.visibleProducts, 8);
   readonly parsedAdjustmentUnits = computed(() => Number(this.adjustmentUnits()));
   readonly adjustmentUnitsValid = computed(() => {
     const units = this.parsedAdjustmentUnits();
@@ -111,6 +117,11 @@ export class InventoryPage {
       if (!productId || this.lastFocusedProductId === productId
         || !this.products().some((product) => product.id === productId)) return;
       this.lastFocusedProductId = productId;
+      untracked(() => {
+        this.query.set(''); this.filter.set('all'); this.view.set('stock');
+        const index = this.visibleProducts().findIndex(product => product.id === productId);
+        this.pagination.select(Math.floor(Math.max(0, index) / this.pagination.pageSize) + 1);
+      });
       requestAnimationFrame(() => requestAnimationFrame(() => {
         document.getElementById(`inventory-product-${productId}`)?.scrollIntoView({
           behavior: 'smooth',
@@ -125,6 +136,7 @@ export class InventoryPage {
   updateQuery(event: Event) {
     const value = (event as CustomEvent<{ value?: string | null }>).detail.value;
     this.query.set(value ?? '');
+    this.pagination.reset();
   }
 
   updateView(event: Event) {

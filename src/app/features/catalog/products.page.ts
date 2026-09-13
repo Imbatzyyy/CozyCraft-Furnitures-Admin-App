@@ -10,6 +10,8 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
 import { CozyToastService } from '../../shared/components/toast.service';
 import { ImgFallbackDirective } from '../../shared/directives/img-fallback.directive';
 import { CatalogActionsService } from './catalog-actions.service';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 
 type ProductView = 'compact' | 'gallery';
 type ProductFilter = 'all' | 'active' | 'draft' | 'stock';
@@ -24,13 +26,13 @@ type ProductFilter = 'all' | 'active' | 'draft' | 'stock';
     SkeletonListComponent,
     StatusPillComponent,
     ImgFallbackDirective,
+    PaginationComponent,
   ],
   templateUrl: './products.page.html',
   styleUrls: ['./catalog.shared.scss', './products.page.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProductsPage {
-  private readonly pageSize = 18;
   readonly data = inject(AdminDataService);
   private readonly actions = inject(CatalogActionsService);
   private readonly toast = inject(CozyToastService);
@@ -44,7 +46,6 @@ export class ProductsPage {
   readonly view = signal<ProductView>('compact');
   readonly changing = signal<Set<string>>(new Set());
   readonly syncing = signal(false);
-  readonly visibleLimit = signal(this.pageSize);
 
   readonly filters = [
     { value: 'active', label: 'Published', icon: 'eye-outline' },
@@ -87,7 +88,8 @@ export class ProductsPage {
     }
     return counts;
   });
-  readonly displayedProducts = computed(() => this.visibleProducts().slice(0, this.visibleLimit()));
+  readonly pagination = createPagination(this.visibleProducts, 8);
+  readonly displayedProducts = this.pagination.visible;
   readonly remainingProducts = computed(() => Math.max(0, this.visibleProducts().length - this.displayedProducts().length));
 
   constructor() {
@@ -125,7 +127,7 @@ export class ProductsPage {
   }
 
   showMore() {
-    this.visibleLimit.update((limit) => limit + this.pageSize);
+    this.pagination.select(this.pagination.page() + 1);
   }
 
   async syncProducts() {
@@ -172,7 +174,7 @@ export class ProductsPage {
   }
 
   private resetVisibleLimit() {
-    this.visibleLimit.set(this.pageSize);
+    this.pagination.reset();
   }
 
   private errorMessage(error: unknown) {

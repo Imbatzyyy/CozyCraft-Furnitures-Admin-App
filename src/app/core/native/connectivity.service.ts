@@ -40,6 +40,8 @@ export class ConnectivityService {
   private readonly networkInformation = this.readNetworkInformation();
   private initialized = false;
   private activeProbe: Promise<void> | null = null;
+  private probeController: AbortController | null = null;
+  private probeSequence = 0;
   private lastProbeAt = 0;
   private consecutiveFailures = navigator.onLine ? 0 : 2;
   private restoredTimer: ReturnType<typeof setTimeout> | null = null;
@@ -114,7 +116,11 @@ export class ConnectivityService {
   }
 
   checkNow(force = false): Promise<void> {
-    if (this.activeProbe) return this.activeProbe;
+    if (this.activeProbe && !force) return this.activeProbe;
+    // A retry/connection change supersedes the pre-reconnect request. Its
+    // eventual rejection must not overwrite the newer successful response.
+    const sequence = ++this.probeSequence;
+    this.probeController?.abort();
     if (!navigator.onLine && (!force || !this.healthUrl())) {
       this.consecutiveFailures = 2;
       this.applyStatus('offline');
@@ -125,7 +131,7 @@ export class ConnectivityService {
       return Promise.resolve();
     }
 
-    const probe = this.performProbe();
+    const probe = this.performProbe(sequence);
     this.activeProbe = probe;
     return probe.finally(() => {
       if (this.activeProbe === probe) this.activeProbe = null;
@@ -133,6 +139,9 @@ export class ConnectivityService {
   }
 
   private readonly handleOffline = (): void => {
+    ++this.probeSequence;
+    this.probeController?.abort();
+    this.activeProbe = null;
     this.cancelFollowUpProbe();
     this.consecutiveFailures = 2;
     this.checkingState.set(false);
@@ -160,7 +169,7 @@ export class ConnectivityService {
     void this.checkNow(true);
   };
 
-  private async performProbe(): Promise<void> {
+  private async performProbe(sequence: number): Promise<void> {
     this.cancelFollowUpProbe();
     this.checkingState.set(true);
     this.lastProbeAt = Date.now();
@@ -173,6 +182,7 @@ export class ConnectivityService {
     }
 
     const controller = new AbortController();
+    this.probeController = controller;
     const timeout = window.setTimeout(() => controller.abort(), ConnectivityService.PROBE_TIMEOUT_MS);
     const startedAt = performance.now();
     try {
@@ -187,6 +197,7 @@ export class ConnectivityService {
         referrerPolicy: 'no-referrer',
         signal: controller.signal,
       });
+      if (sequence !== this.probeSequence) return;
       // A completed request proves the service is reachable even when
       // WKWebView has not refreshed navigator.onLine yet.
       this.cancelFollowUpProbe();
@@ -196,6 +207,7 @@ export class ConnectivityService {
         ? 'unstable'
         : 'online');
     } catch {
+      if (sequence !== this.probeSequence) return;
       this.consecutiveFailures += 1;
       this.applyStatus(this.consecutiveFailures >= 2 ? 'offline' : 'unstable');
       if (this.consecutiveFailures < 2) {
@@ -206,7 +218,10 @@ export class ConnectivityService {
       }
     } finally {
       window.clearTimeout(timeout);
-      this.checkingState.set(false);
+      if (sequence === this.probeSequence) {
+        this.probeController = null;
+        this.checkingState.set(false);
+      }
     }
   }
 

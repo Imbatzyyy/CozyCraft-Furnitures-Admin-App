@@ -30,6 +30,7 @@ interface SearchDemand {
 @Component({
   selector: 'cc-merchandising-page',
   standalone: true,
+  providers: [MerchandisingService],
   imports: [IonIcon, IonSpinner, IonToggle, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

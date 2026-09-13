@@ -157,6 +157,7 @@ export interface Order {
   refund_email_error: string | null;
   subtotal: number;
   delivery_fee: number;
+  reward_discount?: number;
   total: number;
   shipping_address: ShippingAddress;
   created_at: string;
@@ -164,6 +165,20 @@ export interface Order {
   order_status_history: OrderStatusHistory[];
   payment_transactions: PaymentTransaction[];
   profiles: Pick<Profile, 'full_name' | 'email' | 'phone'> | null;
+}
+
+/** Saved invoice details, read on demand under the existing billing-profile RLS. */
+export interface BillingProfile {
+  recipient_name: string;
+  company_name: string;
+  tax_id: string;
+  invoice_email: string;
+  address_line: string;
+  barangay: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  same_as_delivery: boolean;
 }
 
 export interface ReturnRequest {

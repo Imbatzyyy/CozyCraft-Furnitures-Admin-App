@@ -35,14 +35,14 @@ export class AdminActionsService {
     const payload: Record<string, string> = { status };
     const { data: updated, error } = await this.client.from('orders').update(payload).eq('id', order.id).eq('status', order.status).select('id').maybeSingle();
     if (!error && !updated) return { error: 'This order changed on another device. Refresh and try again.' };
-    if (!error) await this.data.loadOrderDetail(order.id);
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadOrderDetail(order.id)]);
     return { error: error?.message ?? null };
   }
 
   async markCodPaymentReceived(orderId: string): Promise<ActionResult> {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
     const { error } = await this.client.rpc('mark_cod_payment_received', { p_order_id: orderId });
-    if (!error) await this.data.loadOrderDetail(orderId);
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadOrderDetail(orderId)]);
     return { error: error?.message ?? null };
   }
 
@@ -54,12 +54,10 @@ export class AdminActionsService {
   ): Promise<ActionResult<Record<string, unknown>>> {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
     if (reason.trim().length < 5) return { error: 'Provide a clear cancellation reason of at least five characters.' };
-    const { data, error } = await this.client.functions.invoke('cancel-order', {
-      body: { orderId, reason: reason.trim(), action, note: note.trim() },
-    });
+    const { data, error } = await this.invoke('cancel-order', { orderId, reason: reason.trim(), action, note: note.trim() });
     const message = this.functionError(data, error, 'The cancellation workflow could not be completed.');
     if (message) await this.data.loadOrderDetail(orderId).catch(() => undefined);
-    else await Promise.all([this.data.loadOrderDetail(orderId), this.data.loadProducts(), this.data.loadInventory()]);
+    else await this.data.reconcileAfterWrite([() => this.data.loadOrderDetail(orderId), () => this.data.loadProducts(), () => this.data.loadInventory()]);
     return { data: data as Record<string, unknown> | undefined, error: message };
   }
 
@@ -72,26 +70,24 @@ export class AdminActionsService {
       .select('id')
       .maybeSingle();
     if (!error && !updated) return { error: 'This return changed on another device. Refresh and try again.' };
-    if (!error) await this.data.loadReturns();
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadReturns()]);
     return { error: error?.message ?? null };
   }
 
   async processReturnRefund(returnId: string): Promise<ActionResult<Record<string, unknown>>> {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
-    const { data, error } = await this.client.functions.invoke('process-return-refund', {
-      body: { returnId },
-    });
+    const { data, error } = await this.invoke('process-return-refund', { returnId });
     const message = this.functionError(data, error, 'The protected return refund could not be completed.');
     if (message) await this.data.loadReturns().catch(() => undefined);
-    else await Promise.all([this.data.loadReturns(), this.data.loadOrders(), this.data.loadProducts(), this.data.loadInventory()]);
+    else await this.data.reconcileAfterWrite([() => this.data.loadReturns(), () => this.data.loadOrders(), () => this.data.loadProducts(), () => this.data.loadInventory()]);
     return { data: data as Record<string, unknown> | undefined, error: message };
   }
 
   async sendRefundEmail(orderId: string): Promise<ActionResult<Record<string, unknown>>> {
     if (!canManageFinancials(this.auth.role())) return { error: 'Administrator access is required.' };
-    const { data, error } = await this.client.functions.invoke('send-refund-email', { body: { orderId } });
+    const { data, error } = await this.invoke('send-refund-email', { orderId });
     const message = this.functionError(data, error, 'The refund confirmation could not be sent.');
-    if (!message) await this.data.loadOrderDetail(orderId);
+    if (!message) await this.data.reconcileAfterWrite([() => this.data.loadOrderDetail(orderId)]);
     return { data: data as Record<string, unknown> | undefined, error: message };
   }
 
@@ -104,7 +100,7 @@ export class AdminActionsService {
       .select('id')
       .maybeSingle();
     if (!error && !updated) return { error: 'This conversation changed on another device. Refresh and try again.' };
-    if (!error) await Promise.all([this.data.loadTickets(), this.data.loadCustomers()]);
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadTickets()]);
     return { error: error?.message ?? null };
   }
 
@@ -121,14 +117,14 @@ export class AdminActionsService {
       .select('id')
       .maybeSingle();
     if (!error && !updated) return { error: 'This conversation is no longer available.' };
-    if (!error) await this.data.loadTickets();
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadTickets()]);
     return { error: error?.message ?? null };
   }
 
   async moderateReview(reviewId: string, approved: boolean): Promise<ActionResult> {
     const { data: updated, error } = await this.client.from('reviews').update({ approved }).eq('id', reviewId).select('id').maybeSingle();
     if (!error && !updated) return { error: 'This review is no longer available.' };
-    if (!error) await this.data.loadReviews();
+    if (!error) await this.data.reconcileAfterWrite([() => this.data.loadReviews()]);
     return { error: error?.message ?? null };
   }
 
@@ -163,9 +159,7 @@ export class AdminActionsService {
     payload: { userId?: string; role?: AdminRole; active?: boolean; email?: string; fullName?: string },
   ): Promise<ActionResult<{ message?: string }>> {
     if (this.auth.role() !== 'superadmin') return { error: 'Only a Super Administrator can manage team access.' };
-    const { data, error } = await this.client.functions.invoke('manage-team-member', {
-      body: { action, ...payload },
-    });
+    const { data, error } = await this.invoke('manage-team-member', { action, ...payload });
     const message = this.functionError(data, error, 'The team access change could not be completed.');
     if (!message && action === 'update-role' && payload.userId && payload.role) {
       this.data.applyTeamMemberPatch(payload.userId, { role: payload.role });
@@ -174,7 +168,7 @@ export class AdminActionsService {
     } else if (!message) {
       // Invitations add a new record rather than modifying a known member, so
       // one small directory refresh is required to display the invited user.
-      await this.data.loadTeam();
+      await this.data.reconcileAfterWrite([() => this.data.loadTeam()]);
     }
     return { data: data as { message?: string } | undefined, error: message };
   }
@@ -182,6 +176,15 @@ export class AdminActionsService {
   async testConnection(): Promise<ActionResult> {
     const { error } = await this.client.from('store_settings').select('id').eq('id', true).single();
     return { error: error?.message ?? null };
+  }
+
+  private async invoke(name: string, body: Record<string, unknown>) {
+    try {
+      const data = await this.connection.invokeAuthenticatedFunction<Record<string, unknown>>(name, body);
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error: error instanceof Error ? error : new Error('The secure service could not complete the request.') };
+    }
   }
 
   private functionError(data: unknown, error: { message?: string } | null, fallback: string) {

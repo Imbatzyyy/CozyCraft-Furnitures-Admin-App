@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import { phtMonthStart } from '../utils/reporting-period';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AdminAuthService } from '../auth/admin-auth.service';
 import { SupabaseAdminService } from '../auth/supabase-admin.service';
@@ -8,6 +9,7 @@ import {
   Address,
   AdminNotification,
   AdminSecuritySettings,
+  BillingProfile,
   Category,
   ClientErrorEvent,
   DashboardMetrics,
@@ -53,6 +55,7 @@ const orderGraphSelect = [
   'refund_email_error',
   'subtotal',
   'delivery_fee',
+  'reward_discount',
   'total',
   'shipping_address',
   'created_at',
@@ -90,6 +93,10 @@ export class AdminDataService {
   private readonly client = this.connection.client;
   private channel: RealtimeChannel | null = null;
   private startPromise: Promise<void> | null = null;
+  private fullRefreshPromise: Promise<void> | null = null;
+  private readonly pendingOrderIds = new Set<string>();
+  private orderRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private orderRefreshRunning = false;
   private workspaceGeneration = 0;
   private refreshSequence = 0;
   private snapshotGeneration = 0;
@@ -169,7 +176,7 @@ export class AdminDataService {
   });
   readonly dashboardMetrics = computed<DashboardMetrics>(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = phtMonthStart(now);
     const settled = this.ordersState().filter(settledOrder);
     return {
       settledRevenue: settled.reduce((total, order) => total + Number(order.total), 0),
@@ -187,10 +194,10 @@ export class AdminDataService {
   readonly revenueSeries = computed(() => {
     const now = new Date();
     return Array.from({ length: 7 }, (_, index) => {
-      const start = new Date(now.getFullYear(), now.getMonth() - (6 - index), 1);
-      const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+      const start = phtMonthStart(now, index - 6);
+      const end = phtMonthStart(start, 1);
       return {
-        label: start.toLocaleDateString('en-PH', { month: 'short' }),
+        label: start.toLocaleDateString('en-PH', { month: 'short', timeZone: 'Asia/Manila' }),
         value: this.ordersState()
           .filter((order) => settledOrder(order) && new Date(order.created_at) >= start && new Date(order.created_at) < end)
           .reduce((sum, order) => sum + Number(order.total), 0),
@@ -284,7 +291,16 @@ export class AdminDataService {
     }
   }
 
-  async refreshAll(showRefresh = true, generation = this.workspaceGeneration) {
+  refreshAll(showRefresh = true, generation = this.workspaceGeneration): Promise<void> {
+    if (this.fullRefreshPromise) return this.fullRefreshPromise;
+    const pending = this.refreshWorkspace(showRefresh, generation);
+    this.fullRefreshPromise = pending;
+    return pending.finally(() => {
+      if (this.fullRefreshPromise === pending) this.fullRefreshPromise = null;
+    });
+  }
+
+  private async refreshWorkspace(showRefresh: boolean, generation: number) {
     if (!this.generationIsActive(generation)) return;
     const refreshSequence = ++this.refreshSequence;
     if (showRefresh) this.refreshingState.set(true);
@@ -347,6 +363,7 @@ export class AdminDataService {
 
   async loadOrders(generation = this.workspaceGeneration) {
     const request = this.beginRequest('orders', generation);
+    const detailVersions = new Map(this.orderDetailSequences);
     const rows = await this.pagedRows((from, to) => this.client
       .from('orders')
       .select(orderGraphSelect)
@@ -354,7 +371,14 @@ export class AdminDataService {
       .order('id')
       .range(from, to)) as unknown as Order[];
     if (!this.requestIsCurrent('orders', request, generation)) return;
-    this.ordersState.set(rows.map((row) => this.normalizeOrder(row)));
+    // Do not let a slower full snapshot undo a newer detail refresh/delete.
+    const changedIds = new Set([...this.orderDetailSequences.keys()].filter((id) =>
+      this.orderDetailSequences.get(id) !== detailVersions.get(id)));
+    const changed = this.ordersState().filter((order) => changedIds.has(order.id));
+    this.ordersState.set(this.sortOrders([
+      ...rows.filter((row) => !changedIds.has(row.id)).map((row) => this.normalizeOrder(row)),
+      ...changed,
+    ]));
   }
 
   /**
@@ -376,15 +400,33 @@ export class AdminDataService {
     if (!this.generationIsActive(generation) || this.orderDetailSequences.get(id) !== sequence) {
       return this.ordersState().find((order) => order.id === id) ?? null;
     }
-    if (!data) return null;
+    if (!data) {
+      this.ordersState.update((orders) => orders.filter((order) => order.id !== id));
+      return null;
+    }
 
     const order = this.normalizeOrder(data as unknown as Order);
     this.ordersState.update((orders) => {
       const existingIndex = orders.findIndex((item) => item.id === id);
-      if (existingIndex < 0) return [order, ...orders];
+      if (existingIndex < 0) return this.sortOrders([order, ...orders]);
       return orders.map((item, index) => index === existingIndex ? order : item);
     });
     return order;
+  }
+
+  /** One bounded read per receipt; never subscribed to or included in workspace sync. */
+  async loadReceiptBillingProfile(userId: string): Promise<BillingProfile | null> {
+    const generation = this.workspaceGeneration;
+    if (!userId || !this.generationIsActive(generation)) throw new Error('Please sign in again before downloading a receipt.');
+    const { data, error } = await this.client
+      .from('billing_profiles')
+      .select('recipient_name,company_name,tax_id,invoice_email,address_line,barangay,city,province,postal_code,same_as_delivery')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!this.generationIsActive(generation)) throw new Error('Your session changed. Reopen the order and try again.');
+    if (error) throw new Error('Billing details could not be loaded. Check your connection and try again.');
+    // A missing or RLS-hidden profile uses the order's delivery details, as on the website.
+    return data as BillingProfile | null;
   }
 
   async loadCustomers(generation = this.workspaceGeneration) {
@@ -418,8 +460,9 @@ export class AdminDataService {
       const protectedCustomers = await this.withSignedAvatarUrls(customers);
       if (this.requestIsCurrent('customers', request, generation)) this.customersState.set(protectedCustomers);
       return;
-    } catch {
+    } catch (error) {
       if (!this.requestIsCurrent('customers', request, generation)) return;
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'PGRST202') throw error;
       // Use the RLS-respecting compatibility query until the directory RPC is deployed.
     }
 
@@ -434,6 +477,10 @@ export class AdminDataService {
       .range(from, to));
     const protectedCustomers = await this.withSignedAvatarUrls(data as unknown as Profile[]);
     if (this.requestIsCurrent('customers', request, generation)) this.customersState.set(protectedCustomers);
+  }
+
+  applyCustomerPatch(id: string, patch: Partial<Profile>) {
+    this.customersState.update((customers) => customers.map((customer) => customer.id === id ? { ...customer, ...patch, id: customer.id } : customer));
   }
 
   async loadTickets(generation = this.workspaceGeneration) {
@@ -604,6 +651,7 @@ export class AdminDataService {
     ]);
     if (storeResult.error) throw storeResult.error;
     if (securityResult.error) throw securityResult.error;
+    if (recipientResult.error) throw recipientResult.error;
     if (!this.requestIsCurrent('settings', request, generation)) return;
     const settings = normalizeStoreSettings(storeResult.data as Partial<StoreSettings>);
     if (!recipientResult.error && recipientResult.data?.recipients) {
@@ -854,13 +902,12 @@ export class AdminDataService {
       const timeout = setTimeout(() => finish(false), 4_000);
       this.channel = this.client
       .channel(`cozycraft-admin-mobile-${this.auth.userId()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        this.scheduleRefresh('orders', generation);
-        if (this.auth.role() !== 'staff') this.scheduleRefresh('customers', generation);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        this.scheduleOrderChange(payload, 'id', generation);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => this.scheduleRefresh('orders', generation))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_status_history' }, () => this.scheduleRefresh('orders', generation))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_transactions' }, () => this.scheduleRefresh('orders', generation))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, (payload) => this.scheduleOrderChange(payload, 'order_id', generation))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_status_history' }, (payload) => this.scheduleOrderChange(payload, 'order_id', generation))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_transactions' }, (payload) => this.scheduleOrderChange(payload, 'order_id', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => this.scheduleRefresh('products', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => this.scheduleRefresh('categories', generation))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_movements' }, () => this.scheduleRefresh('inventory', generation))
@@ -949,6 +996,75 @@ export class AdminDataService {
     }, 220));
   }
 
+  private scheduleOrderChange(
+    payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> },
+    key: 'id' | 'order_id',
+    generation: number,
+  ) {
+    if (!this.generationIsActive(generation)) return;
+    const id = payload.new[key] ?? payload.old[key];
+    if (typeof id !== 'string' || !id) {
+      // DELETE events can contain only the child's primary key under RLS.
+      // Reconcile the graph rather than guessing which parent was affected.
+      this.scheduleRefresh('orders', generation);
+      return;
+    }
+    if (key === 'id' && payload.eventType === 'DELETE') {
+      this.orderDetailSequences.set(id, (this.orderDetailSequences.get(id) ?? 0) + 1);
+      this.pendingOrderIds.delete(id);
+      this.ordersState.update((orders) => orders.filter((order) => order.id !== id));
+      return;
+    }
+    this.pendingOrderIds.add(id);
+    if (this.orderRefreshTimer) clearTimeout(this.orderRefreshTimer);
+    this.orderRefreshTimer = setTimeout(() => {
+      this.orderRefreshTimer = null;
+      void this.flushOrderChanges(generation);
+    }, 400);
+  }
+
+  private async flushOrderChanges(generation: number) {
+    if (this.orderRefreshRunning || !this.generationIsActive(generation)) return;
+    this.orderRefreshRunning = true;
+    try {
+      while (this.pendingOrderIds.size && this.generationIsActive(generation)) {
+        const ids = [...this.pendingOrderIds].slice(0, 40);
+        ids.forEach((id) => this.pendingOrderIds.delete(id));
+        const versions = new Map(ids.map((id) => {
+          const version = (this.orderDetailSequences.get(id) ?? 0) + 1;
+          this.orderDetailSequences.set(id, version);
+          return [id, version];
+        }));
+        const { data, error } = await this.client.from('orders').select(orderGraphSelect).in('id', ids);
+        if (error) throw error;
+        if (!this.generationIsActive(generation)) return;
+        const currentIds = new Set(ids.filter((id) => this.orderDetailSequences.get(id) === versions.get(id)));
+        const updates = (data ?? []) as unknown as Order[];
+        this.ordersState.update((orders) => this.sortOrders([
+          ...orders.filter((order) => !currentIds.has(order.id)),
+          ...updates.filter((order) => currentIds.has(order.id)).map((order) => this.normalizeOrder(order)),
+        ]));
+      }
+    } catch {
+      if (this.generationIsActive(generation)) this.errorState.set('Some order updates could not synchronize. Pull to retry before changing an order.');
+    } finally {
+      if (this.generationIsActive(generation)) this.orderRefreshRunning = false;
+    }
+  }
+
+  /** A committed write is not a failed write when its follow-up read is offline. */
+  async reconcileAfterWrite(reads: Array<() => Promise<unknown>>) {
+    const generation = this.workspaceGeneration;
+    const results = await Promise.allSettled(reads.map((read) => Promise.resolve().then(read)));
+    if (this.generationIsActive(generation) && results.some((result) => result.status === 'rejected')) {
+      this.errorState.set('Your change was saved, but the latest view could not synchronize. Pull to refresh; do not submit the same action again.');
+    }
+  }
+
+  private sortOrders(orders: Order[]) {
+    return orders.sort((left, right) => right.created_at.localeCompare(left.created_at) || left.id.localeCompare(right.id));
+  }
+
   private refreshTarget(target: RefreshTarget, generation: number) {
     const actions: Record<RefreshTarget, () => Promise<void>> = {
       orders: () => this.loadOrders(generation),
@@ -976,6 +1092,11 @@ export class AdminDataService {
     const channel = this.channel;
     this.channel = null;
     this.startPromise = null;
+    this.fullRefreshPromise = null;
+    if (this.orderRefreshTimer) clearTimeout(this.orderRefreshTimer);
+    this.orderRefreshTimer = null;
+    this.orderRefreshRunning = false;
+    this.pendingOrderIds.clear();
     for (const timer of this.refreshTimers.values()) clearTimeout(timer);
     this.refreshTimers.clear();
     this.requestSequences.clear();
@@ -1100,6 +1221,7 @@ export class AdminDataService {
       shipping_address: row.shipping_address ?? {},
       subtotal: Number(row.subtotal),
       delivery_fee: Number(row.delivery_fee),
+      reward_discount: Number(row.reward_discount ?? 0),
       total: Number(row.total),
     };
   }
@@ -1226,9 +1348,12 @@ export class AdminDataService {
     request: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
   ): Promise<T[]> {
     const rows: T[] = [];
+    const generation = this.workspaceGeneration;
     const pageSize = 500;
     for (let from = 0; ; from += pageSize) {
+      if (!this.generationIsActive(generation)) return [];
       const result = await request(from, from + pageSize - 1);
+      if (!this.generationIsActive(generation)) return [];
       if (result.error) throw result.error;
       const page = result.data ?? [];
       rows.push(...page);

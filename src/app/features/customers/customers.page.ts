@@ -1,17 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonIcon, IonSearchbar } from '@ionic/angular/standalone';
 import { AdminDataService } from '../../core/data/admin-data.service';
 import { Profile } from '../../core/models/admin.models';
 import { compactMoney, initials, shortDate } from '../../core/utils/format';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 
 type CustomerFilter = 'all' | 'buyers' | 'new';
 
 @Component({
   selector: 'cc-customers-page',
   standalone: true,
-  imports: [RouterLink, IonIcon, IonSearchbar, EmptyStateComponent],
+  imports: [RouterLink, IonIcon, IonSearchbar, EmptyStateComponent, PaginationComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="cc-page customers-page">
@@ -55,8 +57,8 @@ type CustomerFilter = 'all' | 'buyers' | 'new';
         </header>
 
         @if (visible().length) {
-          <div class="customer-grid">
-            @for (customer of visible(); track customer.id) {
+          <div class="customer-grid" data-page-list>
+            @for (customer of pagination.visible(); track customer.id) {
               <a [routerLink]="['/app/customers', customer.id]" class="customer-card cc-reveal" [attr.aria-label]="'Open ' + displayName(customer) + ' profile'">
                 <header class="customer-card__head">
                   <span class="customer-avatar">
@@ -85,6 +87,7 @@ type CustomerFilter = 'all' | 'buyers' | 'new';
               </a>
             }
           </div>
+          <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="visible().length" (pageChange)="pagination.select($event)" label="Customer directory pages" />
         } @else {
           <div class="customer-empty"><cc-empty-state icon="people-outline" title="No matching customers" message="Try another name, email, username, or mobile number."></cc-empty-state></div>
         }
@@ -132,14 +135,18 @@ export class CustomersPage {
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
   });
 
-  constructor(readonly data: AdminDataService) {}
+  readonly pagination = createPagination(this.visible, 8);
+
+  constructor(readonly data: AdminDataService) {
+    effect(() => { this.query(); this.filter(); this.pagination.reset(); });
+  }
 
   displayName(customer: Profile) {
     return customer.full_name || customer.username || customer.email || 'Customer';
   }
 
   orderCount(customer: Profile) {
-    return customer.order_count ?? this.customerOrderCounts().get(customer.id) ?? customer.orders?.length ?? 0;
+    return this.customerOrderCounts().get(customer.id) ?? 0;
   }
 
   lifetimeValue(id: string) {

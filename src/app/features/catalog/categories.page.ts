@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 import {
   AlertController,
   IonIcon,
@@ -27,6 +29,7 @@ interface CategoryRow {
   standalone: true,
   imports: [
     IonIcon,
+    PaginationComponent,
     IonToggle,
     EmptyStateComponent,
     SkeletonListComponent,
@@ -100,20 +103,25 @@ export class CategoriesPage {
     });
   });
 
+  readonly pagination = createPagination(this.visibleRows, 6);
+
   constructor() {
     void this.data.start();
   }
 
   updateQuery(value: string) {
     this.query.set(value);
+    this.pagination.reset();
   }
 
   clearQuery() {
     this.query.set('');
+    this.pagination.reset();
   }
 
   selectFilter(filter: CategoryFilter) {
     this.filter.set(filter);
+    this.pagination.reset();
   }
 
   filterCount(filter: CategoryFilter) {

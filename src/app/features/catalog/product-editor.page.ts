@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { distinctUntilChanged, map } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AlertController, IonIcon } from '@ionic/angular/standalone';
@@ -93,6 +95,8 @@ const serializeDimensions = (rows: DimensionSpec[]) => JSON.stringify(rows
 })
 export class ProductEditorPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly destroyRef = inject(DestroyRef);
+  private hydrationSequence = 0;
   private readonly router = inject(Router);
   private readonly data = inject(AdminDataService);
   private readonly actions = inject(CatalogActionsService);
@@ -125,10 +129,22 @@ export class ProductEditorPage implements OnInit, OnDestroy {
     return this.data.categories();
   }
 
-  async ngOnInit() {
+  ngOnInit() {
+    this.route.paramMap.pipe(map((params) => params.get('id') ?? 'new'), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+      .subscribe((id) => void this.hydrate(id));
+  }
+
+  private async hydrate(productId: string) {
+    const sequence = ++this.hydrationSequence;
+    this.loading.set(true); this.notFound.set(false); this.error.set('');
+    const abandonedImages = [...this.uploadedThisSession];
+    this.uploadedThisSession.clear();
+    if (!this.committed && abandonedImages.length) void this.actions.removeProductImages(abandonedImages);
+    this.committed = false; this.originalProduct = null; this.originalImages = [];
+    this.materials = [{ type: '', description: '' }]; this.dimensions = [{ label: '', value: '', unit: 'cm' }];
     try {
       await this.data.start();
-      const productId = this.route.snapshot.paramMap.get('id');
+      if (sequence !== this.hydrationSequence) return;
       if (!productId || productId === 'new') {
         this.isNew.set(true);
         this.draft = this.emptyProduct(this.categories[0]?.name ?? '');
@@ -139,6 +155,7 @@ export class ProductEditorPage implements OnInit, OnDestroy {
       let product = this.data.products().find((item) => item.id === productId);
       if (!product) {
         await this.data.loadProducts();
+        if (sequence !== this.hydrationSequence) return;
         product = this.data.products().find((item) => item.id === productId);
       }
       if (!product) {
@@ -165,13 +182,14 @@ export class ProductEditorPage implements OnInit, OnDestroy {
       this.materials = parseMaterials(product.material);
       this.dimensions = parseDimensions(product.dimensions);
     } catch (error) {
-      this.error.set(this.errorMessage(error));
+      if (sequence === this.hydrationSequence) this.error.set(this.errorMessage(error));
     } finally {
-      this.loading.set(false);
+      if (sequence === this.hydrationSequence) this.loading.set(false);
     }
   }
 
   ngOnDestroy() {
+    ++this.hydrationSequence;
     if (!this.committed && this.uploadedThisSession.size) {
       void this.actions.removeProductImages([...this.uploadedThisSession]);
     }
@@ -212,6 +230,7 @@ export class ProductEditorPage implements OnInit, OnDestroy {
   }
 
   async removeImage(index: number) {
+    if (!this.canLeave()) return;
     const url = this.draft.images[index];
     if (!url) return;
     if (this.uploadedThisSession.has(url)) {
@@ -225,6 +244,7 @@ export class ProductEditorPage implements OnInit, OnDestroy {
   }
 
   async onFilesSelected(event: Event) {
+    if (!this.canLeave()) return;
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
     input.value = '';
@@ -235,10 +255,15 @@ export class ProductEditorPage implements OnInit, OnDestroy {
       return;
     }
     const selected = files.slice(0, slots);
+    const sequence = this.hydrationSequence;
     this.uploading.set(true);
     this.error.set('');
     try {
       const result = await this.actions.uploadProductImages(selected);
+      if (sequence !== this.hydrationSequence) {
+        if (result.urls.length) await this.actions.removeProductImages(result.urls);
+        return;
+      }
       result.urls.forEach((url) => this.uploadedThisSession.add(url));
       this.draft.images = [...this.draft.images, ...result.urls].slice(0, 4);
       const messages = [...result.errors];
@@ -250,7 +275,7 @@ export class ProductEditorPage implements OnInit, OnDestroy {
   }
 
   async save() {
-    if (this.saving()) return;
+    if (this.saving() || this.uploading() || this.loading()) return;
     this.error.set('');
     const validationError = this.validate();
     if (validationError) {
@@ -269,9 +294,10 @@ export class ProductEditorPage implements OnInit, OnDestroy {
     }
 
     this.saving.set(true);
+    try {
     this.draft.material = serializeMaterials(this.materials);
     this.draft.dimensions = serializeDimensions(this.dimensions);
-    if (this.isNew()) {
+    if (this.isNew() && !this.draft.id) {
       this.draft.id = this.actions.createProductId(this.draft.name, this.draft.category, this.draft.subcategory);
     }
     const result = await this.actions.saveProduct(this.draft, this.isNew());
@@ -282,9 +308,11 @@ export class ProductEditorPage implements OnInit, OnDestroy {
     }
 
     const removedOriginalImages = this.originalImages.filter((url) => !this.draft.images.includes(url));
-    const cleanup = await this.actions.removeProductImages(removedOriginalImages);
+    // These uploads belong to the saved product now, even if later cleanup or
+    // navigation fails. Destroying the editor must never delete them.
     this.uploadedThisSession.clear();
     this.committed = true;
+    const cleanup = await this.actions.removeProductImages(removedOriginalImages).catch(() => ({ error: 'Image cleanup unavailable.' }));
     this.saving.set(false);
     await this.toast.show(
       cleanup.error
@@ -293,10 +321,14 @@ export class ProductEditorPage implements OnInit, OnDestroy {
       cleanup.error ? 'neutral' : 'success',
     );
     await this.router.navigate(['/app/products'], { replaceUrl: true });
+    } catch (error) {
+      this.error.set(this.committed ? 'The product was saved, but the view could not close. Return to the catalog to check it.' : this.errorMessage(error));
+    } finally { this.saving.set(false); }
   }
 
   async confirmDelete() {
-    if (!this.originalProduct || this.deleting()) return;
+    if (!this.originalProduct || !this.canLeave()) return;
+    const product = this.originalProduct;
     const alert = await this.alertController.create({
       header: 'Delete product?',
       subHeader: this.originalProduct.name,
@@ -309,9 +341,10 @@ export class ProductEditorPage implements OnInit, OnDestroy {
     });
     await alert.present();
     const { role } = await alert.onDidDismiss();
-    if (role !== 'destructive') return;
+    if (role !== 'destructive' || product !== this.originalProduct || !this.canLeave()) return;
 
     this.deleting.set(true);
+    try {
     const result = await this.actions.deleteProduct(this.originalProduct);
     if (result.error) {
       this.deleting.set(false);
@@ -321,6 +354,7 @@ export class ProductEditorPage implements OnInit, OnDestroy {
     if (this.uploadedThisSession.size) await this.actions.removeProductImages([...this.uploadedThisSession]);
     this.uploadedThisSession.clear();
     this.committed = true;
+    this.deleting.set(false);
     await this.toast.show(
       result.data?.storageWarning
         ? `${this.originalProduct.name} was deleted, but some image cleanup needs attention.`
@@ -328,13 +362,21 @@ export class ProductEditorPage implements OnInit, OnDestroy {
       result.data?.storageWarning ? 'neutral' : 'success',
     );
     await this.router.navigate(['/app/products'], { replaceUrl: true });
+    } catch {
+      await this.toast.show('The delete result could not be confirmed. Reload the catalog before trying again.', 'danger');
+    } finally { this.deleting.set(false); }
   }
 
   async cancel() {
+    if (!this.canLeave()) return;
     if (this.uploadedThisSession.size) await this.actions.removeProductImages([...this.uploadedThisSession]);
     this.uploadedThisSession.clear();
     this.committed = true;
     await this.router.navigate(['/app/products']);
+  }
+
+  canLeave() {
+    return !this.saving() && !this.uploading() && !this.deleting();
   }
 
   private emptyProduct(category = ''): ProductMutation {

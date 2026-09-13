@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IonIcon } from '@ionic/angular/standalone';
 import { AdminAuthService } from '../../core/auth/admin-auth.service';
 import { AdminDataService } from '../../core/data/admin-data.service';
@@ -9,28 +10,30 @@ import { timeAgo, titleCase } from '../../core/utils/format';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
 import { SkeletonListComponent } from '../../shared/components/skeleton-list.component';
 import { CozyToastService } from '../../shared/components/toast.service';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 
 type InboxScope = 'all' | 'active' | 'attention' | SupportStatus;
 
 @Component({
   selector: 'cc-support-inbox-page',
   standalone: true,
-  imports: [IonIcon, EmptyStateComponent, SkeletonListComponent],
+  imports: [IonIcon, EmptyStateComponent, SkeletonListComponent, PaginationComponent],
   templateUrl: './support-inbox.page.html',
   styleUrl: './support-inbox.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SupportInboxPage {
-  private readonly pageSize = 18;
   protected readonly data = inject(AdminDataService);
   private readonly auth = inject(AdminAuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly params = toSignal(this.route.queryParamMap, { initialValue: this.route.snapshot.queryParamMap });
   private readonly toast = inject(CozyToastService);
   private readonly native = inject(NativePlatformService);
 
   protected readonly query = signal('');
   protected readonly scope = signal<InboxScope>('all');
-  protected readonly visibleLimit = signal(this.pageSize);
   protected readonly scopeOptions: ReadonlyArray<{ value: InboxScope; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'open', label: 'Open' },
@@ -90,7 +93,8 @@ export class SupportInboxPage {
       });
   });
 
-  protected readonly displayedTickets = computed(() => this.filteredTickets().slice(0, this.visibleLimit()));
+  protected readonly pagination = createPagination(this.filteredTickets, 8);
+  protected readonly displayedTickets = this.pagination.visible;
   protected readonly remainingTickets = computed(() => Math.max(0, this.filteredTickets().length - this.displayedTickets().length));
   protected readonly scopeLabel = computed(() => {
     if (this.scope() === 'active') return 'Active queue';
@@ -99,6 +103,10 @@ export class SupportInboxPage {
   });
 
   constructor() {
+    effect(() => {
+      const scope = this.params().get('scope');
+      if (['all', 'active', 'attention', 'open', 'in_progress', 'resolved', 'closed'].includes(scope ?? '')) this.selectScope(scope as InboxScope);
+    });
     void this.data.start().catch((error: unknown) => void this.toast.show(this.errorMessage(error), 'danger'));
   }
 
@@ -117,7 +125,7 @@ export class SupportInboxPage {
   }
 
   protected showMore() {
-    this.visibleLimit.update((limit) => limit + this.pageSize);
+    this.pagination.select(this.pagination.page() + 1);
   }
 
   protected scopeCount(scope: InboxScope) {
@@ -181,7 +189,7 @@ export class SupportInboxPage {
   }
 
   private resetVisibleLimit() {
-    this.visibleLimit.set(this.pageSize);
+    this.pagination.reset();
   }
 
   private errorMessage(error: unknown) {

@@ -22,6 +22,7 @@ interface IndexedSearchResult {
 }
 
 const WORKSPACE_DESTINATIONS: readonly WorkspaceSearchResult[] = [
+  { id: 'page-system-health', kind: 'page', title: 'System health', detail: 'Operational exceptions and live sync', route: '/app/system-health', icon: 'pulse-outline', keywords: 'health errors backlog payment failure stock priority support sync' },
   { id: 'page-dashboard', kind: 'page', title: 'Overview', detail: 'Store pulse and priority queue', route: '/app/dashboard', icon: 'grid-outline', keywords: 'home dashboard revenue summary metrics performance' },
   { id: 'page-orders', kind: 'page', title: 'Orders', detail: 'Fulfillment and order decisions', route: '/app/orders', icon: 'receipt-outline', keywords: 'order queue delivery cancellation refund status fulfillment' },
   { id: 'page-products', kind: 'page', title: 'Catalog', detail: 'Products, pricing, and visibility', route: '/app/products', icon: 'cube-outline', keywords: 'product catalog add edit price furniture visibility' },

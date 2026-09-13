@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { createPagination } from '../../core/utils/pagination';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { IonIcon, IonModal, IonSpinner } from '@ionic/angular/standalone';
@@ -24,7 +26,7 @@ interface ReviewGallery {
 @Component({
   selector: 'cc-reviews-page',
   standalone: true,
-  imports: [IonIcon, IonModal, IonSpinner, EmptyStateComponent, SkeletonListComponent, StatusPillComponent, ImgFallbackDirective],
+  imports: [IonIcon, IonModal, IonSpinner, EmptyStateComponent, SkeletonListComponent, StatusPillComponent, ImgFallbackDirective, PaginationComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="cc-page reviews-page">
@@ -85,8 +87,8 @@ interface ReviewGallery {
           [message]="data.reviews().length ? 'Try another filter to continue moderating customer feedback.' : 'New ratings, written feedback, and customer photos will arrive here automatically.'"
         />
       } @else {
-        <section class="review-list" aria-label="Review moderation queue">
-          @for (review of visibleReviews(); track review.id) {
+        <section class="review-list" aria-label="Review moderation queue" data-page-list>
+          @for (review of pagination.visible(); track review.id) {
             <article class="review-card" [class.review-card--focused]="focusedReviewId() === review.id" [attr.id]="'review-' + review.id">
               <div class="review-card__body">
                 <header class="reviewer-row">
@@ -138,6 +140,7 @@ interface ReviewGallery {
             </article>
           }
         </section>
+        <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="visibleReviews().length" (pageChange)="pagination.select($event)" label="Review pages" />
       }
     </main>
 
@@ -208,6 +211,7 @@ export class ReviewsPage {
     published: 'Live on storefront',
     photos: 'Customer photo reviews',
   })[this.filter()]);
+  protected readonly pagination = createPagination(this.visibleReviews, 6);
   protected readonly galleryReview = computed(() => {
     const gallery = this.gallery();
     return gallery ? this.data.reviews().find((review) => review.id === gallery.reviewId) ?? null : null;
@@ -226,6 +230,8 @@ export class ReviewsPage {
       if (!reviewId || this.lastFocusedReviewId === reviewId
         || !this.data.reviews().some((review) => review.id === reviewId)) return;
       this.lastFocusedReviewId = reviewId;
+      this.filter.set('all');
+      this.pagination.select(Math.floor(this.data.reviews().findIndex((review) => review.id === reviewId) / this.pagination.pageSize) + 1);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         document.getElementById(`review-${reviewId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }));
@@ -235,6 +241,7 @@ export class ReviewsPage {
   protected setFilter(filter: ReviewFilter) {
     if (this.filter() === filter) return;
     this.filter.set(filter);
+    this.pagination.reset();
     void this.native.tap();
   }
 

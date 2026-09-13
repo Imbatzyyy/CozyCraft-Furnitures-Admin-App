@@ -29,9 +29,11 @@ const administratorRoutes = new Set([
   '/app/content',
   '/app/reports',
   '/app/activity',
+  '/app/system-health',
 ]);
 
 export const canAccessRoute = (role: AdminRole | null | undefined, url: string) => {
+  if (!isAdminRole(role)) return false;
   const normalized = `/${url.split('?')[0].split('/').filter(Boolean).slice(0, 2).join('/')}`;
   if (role === 'superadmin') return true;
   return (role === 'admin' ? administratorRoutes : staffRoutes).has(normalized);

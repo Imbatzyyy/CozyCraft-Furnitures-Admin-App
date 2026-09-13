@@ -64,8 +64,8 @@
   } @else if (visibleRows().length === 0) {
     <section class="category-empty"><cc-empty-state icon="search-outline" title="No matching rooms" message="Try another visibility filter or shorten your search."></cc-empty-state></section>
   } @else {
-    <section class="category-list" aria-label="Ordered product categories">
-      @for (row of visibleRows(); track row.category.id) {
+    <section class="category-list" aria-label="Ordered product categories" data-page-list>
+      @for (row of pagination.visible(); track row.category.id) {
         <article class="category-card cc-reveal" [attr.data-inactive]="!row.category.active">
           <div class="category-card__main">
             <div class="category-card__visual">
@@ -118,6 +118,7 @@
         </article>
       }
     </section>
+    <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="visibleRows().length" (pageChange)="pagination.select($event)" label="Category pages" />
   }
 
   <aside class="category-note">

@@ -27,8 +27,8 @@
       <div class="stock-tools">
         <ion-searchbar aria-label="Search inventory" placeholder="Product, SKU or room…" [debounce]="180" [value]="query()" (ionInput)="updateQuery($event)"></ion-searchbar>
         <div class="stock-filter" role="group" aria-label="Inventory filter">
-          <button type="button" [attr.data-active]="filter() === 'all'" (click)="filter.set('all')">All <i>{{ products().length }}</i></button>
-          <button type="button" [attr.data-active]="filter() === 'low'" (click)="filter.set('low')">Low <i>{{ lowStock().length }}</i></button>
+          <button type="button" [attr.data-active]="filter() === 'all'" (click)="filter.set('all'); pagination.reset()">All <i>{{ products().length }}</i></button>
+          <button type="button" [attr.data-active]="filter() === 'low'" (click)="filter.set('low'); pagination.reset()">Low <i>{{ lowStock().length }}</i></button>
         </div>
       </div>
 
@@ -42,8 +42,8 @@
       } @else if (visibleProducts().length === 0) {
         <div class="inventory-empty"><cc-empty-state icon="cube-outline" title="No inventory matches" message="Clear the low-stock filter or try another product name."></cc-empty-state></div>
       } @else {
-        <div class="stock-list">
-          @for (product of visibleProducts(); track product.id) {
+        <div class="stock-list" data-page-list>
+          @for (product of pagination.visible(); track product.id) {
             <article
               class="stock-card"
               [class.stock-card--focused]="focusedProductId() === product.id"
@@ -68,6 +68,7 @@
             </article>
           }
         </div>
+        <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="visibleProducts().length" (pageChange)="pagination.select($event)" label="Inventory pages" />
       }
 
       <aside class="inventory-note"><ion-icon name="layers-outline" aria-hidden="true"></ion-icon><p><b>One complete adjustment.</b> Tap − or +, enter any quantity, and save one reason for the whole stock change.</p></aside>

@@ -1,15 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { IonIcon } from '@ionic/angular/standalone';
 import { AdminDataService } from '../../core/data/admin-data.service';
 import { compactMoney, dateTime, initials, money, shortDate, titleCase } from '../../core/utils/format';
 import { SkeletonListComponent } from '../../shared/components/skeleton-list.component';
 import { StatusPillComponent } from '../../shared/components/status-pill.component';
+import { CustomerManagementComponent } from './customer-management.component';
 
 @Component({
   selector: 'cc-customer-detail-page',
   standalone: true,
-  imports: [RouterLink, IonIcon, StatusPillComponent, SkeletonListComponent],
+  imports: [RouterLink, IonIcon, StatusPillComponent, SkeletonListComponent, CustomerManagementComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="cc-page customer-detail-page">
@@ -30,16 +33,17 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
           <div class="profile-actions" aria-label="Customer contact actions">
             @if (item.email) { <a [href]="'mailto:' + item.email"><ion-icon name="mail-outline" aria-hidden="true"></ion-icon>Email</a> }
             @if (item.phone) { <a [href]="'tel:' + item.phone"><ion-icon name="call-outline" aria-hidden="true"></ion-icon>Call</a> }
-            <span><ion-icon name="shield-checkmark-outline" aria-hidden="true"></ion-icon>Read-only record</span>
+            <span><ion-icon name="shield-checkmark-outline" aria-hidden="true"></ion-icon>Protected customer record</span>
           </div>
         </section>
 
         <section class="profile-stats" aria-label="Customer activity summary">
-          <div><span>Orders</span><strong>{{ item.order_count ?? customerOrders().length }}</strong><small>all purchases</small></div>
+          <div><span>Orders</span><strong>{{ customerOrders().length }}</strong><small>all purchases</small></div>
           <div><span>Addresses</span><strong>{{ item.address_count ?? item.addresses?.length ?? 0 }}</strong><small>saved locations</small></div>
           <div><span>Support</span><strong>{{ item.support_ticket_count ?? customerTickets().length }}</strong><small>service tickets</small></div>
         </section>
 
+        <cc-customer-management [customer]="item" />
         <div class="profile-grid">
           <section class="profile-card">
             <header><div><p class="cc-eyebrow">Account details</p><h2>Contact & identity</h2></div><ion-icon name="person-outline" aria-hidden="true"></ion-icon></header>
@@ -111,10 +115,10 @@ export class CustomerDetailPage {
   readonly compactMoney = compactMoney;
   readonly money = money;
   readonly titleCase = titleCase;
-  readonly id = this.route.snapshot.paramMap.get('id') ?? '';
-  readonly customer = computed(() => this.data.customers().find((item) => item.id === this.id));
+  readonly id = toSignal(this.route.paramMap.pipe(map((params) => params.get('id') ?? '')), { initialValue: this.route.snapshot.paramMap.get('id') ?? '' });
+  readonly customer = computed(() => this.data.customers().find((item) => item.id === this.id()));
   readonly customerOrders = computed(() => this.data.orders()
-    .filter((order) => order.user_id === this.id)
+    .filter((order) => order.user_id === this.id())
     .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()));
   readonly orderPageCount = computed(() => Math.max(1, Math.ceil(this.customerOrders().length / this.orderPageSize)));
   readonly orderPage = computed(() => Math.min(this.requestedOrderPage(), this.orderPageCount()));
@@ -124,7 +128,7 @@ export class CustomerDetailPage {
   });
   readonly orderRangeStart = computed(() => this.customerOrders().length ? (this.orderPage() - 1) * this.orderPageSize + 1 : 0);
   readonly orderRangeEnd = computed(() => Math.min(this.orderPage() * this.orderPageSize, this.customerOrders().length));
-  readonly customerTickets = computed(() => this.data.tickets().filter((ticket) => ticket.user_id === this.id));
+  readonly customerTickets = computed(() => this.data.tickets().filter((ticket) => ticket.user_id === this.id()));
   readonly lifetimeValue = computed(() => this.customerOrders()
     .filter((order) => order.payment_status === 'paid' && order.status !== 'cancelled')
     .reduce((total, order) => total + Number(order.total), 0));
@@ -134,7 +138,9 @@ export class CustomerDetailPage {
     return item?.full_name || item?.username || item?.email || 'Customer';
   });
 
-  constructor(readonly data: AdminDataService, private readonly route: ActivatedRoute) {}
+  constructor(readonly data: AdminDataService, private readonly route: ActivatedRoute) {
+    effect(() => { this.id(); this.requestedOrderPage.set(1); });
+  }
 
   addressLine(address: NonNullable<ReturnType<typeof this.primaryAddress>>) {
     return [address.address_line, address.barangay, address.city, address.province, address.postal_code].filter(Boolean).join(', ');

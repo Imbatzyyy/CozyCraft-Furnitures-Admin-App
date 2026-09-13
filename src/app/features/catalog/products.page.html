@@ -115,7 +115,7 @@
       </cc-empty-state>
     </section>
   } @else {
-    <section class="product-results" [attr.data-view]="view()" aria-label="Products">
+    <section class="product-results" [attr.data-view]="view()" aria-label="Products" data-page-list>
       @for (product of displayedProducts(); track product.id) {
         <article class="product-card cc-reveal">
           <button
@@ -180,12 +180,7 @@
       }
     </section>
 
-    @if (remainingProducts() > 0) {
-      <button type="button" class="show-more-products" (click)="showMore()">
-        <span><strong>Show more products</strong><small>{{ remainingProducts() }} remaining</small></span>
-        <ion-icon name="chevron-down-outline"></ion-icon>
-      </button>
-    }
+    <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="visibleProducts().length" (pageChange)="pagination.select($event)" label="Catalog pages" />
   }
 
   <footer class="catalog-footer">

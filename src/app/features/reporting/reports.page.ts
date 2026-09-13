@@ -4,6 +4,7 @@ import { AdminDataService } from '../../core/data/admin-data.service';
 import { ExportService, PremiumReport } from '../../core/native/export.service';
 import { Order } from '../../core/models/admin.models';
 import { compactMoney, money, settledOrder, shortDate, titleCase } from '../../core/utils/format';
+import { reportingBounds, reportingSlices } from '../../core/utils/reporting-period';
 import { CozyToastService } from '../../shared/components/toast.service';
 
 type Range = 'week' | 'month' | 'quarter';
@@ -228,16 +229,16 @@ export class ReportsPage {
         period: this.periodLabel(),
         generatedAt,
         kpis: [
-          { label: 'Settled revenue', value: money(this.revenue()), detail: `${this.settled().length} paid orders` },
-          { label: 'Average order', value: money(this.averageOrder()), detail: 'per settled order' },
+          { label: 'Settled revenue', value: money(this.revenue(), 2), detail: `${this.settled().length} paid orders` },
+          { label: 'Average order', value: money(this.averageOrder(), 2), detail: 'per settled order' },
           { label: 'Customers', value: String(this.uniqueCustomers()), detail: 'unique paid buyers' },
-          { label: 'Leading room', value: this.leadingCategory().name, detail: money(this.leadingCategory().value) },
+          { label: 'Leading room', value: this.leadingCategory().name, detail: money(this.leadingCategory().value, 2) },
         ],
         columns: [
           { label: 'Order', weight: 1.05 }, { label: 'Customer', weight: 1.75 }, { label: 'Fulfillment', weight: 1 },
           { label: 'Payment', weight: 1 }, { label: 'Created', weight: 1.25 }, { label: 'Total', weight: 1.1, align: 'right' },
         ],
-        rows: this.settled().map((order) => [order.order_number, this.customerName(order), titleCase(order.status), titleCase(order.payment_method), shortDate(order.created_at), money(order.total)]),
+        rows: this.settled().map((order) => [order.order_number, this.customerName(order), titleCase(order.status), titleCase(order.payment_method), shortDate(order.created_at), money(order.total, 2)]),
         note: 'Revenue includes paid, non-cancelled orders only.',
       };
     }
@@ -254,13 +255,13 @@ export class ReportsPage {
           { label: 'Catalog', value: String(this.data.products().length), detail: 'product records' },
           { label: 'Units on hand', value: units.toLocaleString('en-PH'), detail: 'across all products' },
           { label: 'Low stock', value: String(this.lowStockCount()), detail: `at ${this.data.settings().low_stock_threshold} or below` },
-          { label: 'Retail value', value: money(this.stockValue()), detail: 'price × units on hand' },
+          { label: 'Retail value', value: money(this.stockValue(), 2), detail: 'price × units on hand' },
         ],
         columns: [
           { label: 'Product', weight: 2.1 }, { label: 'Category', weight: 1.25 }, { label: 'Status', weight: .9 },
           { label: 'Units', weight: .65, align: 'right' }, { label: 'Price', weight: 1, align: 'right' }, { label: 'Stock value', weight: 1.2, align: 'right' },
         ],
-        rows: this.data.products().map((product) => [product.name, product.category, titleCase(product.status), product.stock_quantity, money(product.price), money(product.stock_quantity * product.price)]),
+        rows: this.data.products().map((product) => [product.name, product.category, titleCase(product.status), product.stock_quantity, money(product.price, 2), money(product.stock_quantity * product.price, 2)]),
         note: 'Stock value is a retail estimate, not an accounting cost valuation.',
       };
     }
@@ -277,13 +278,13 @@ export class ReportsPage {
         { label: 'Customers', value: String(customerRows.length), detail: 'available profiles' },
         { label: 'Repeat buyers', value: String(this.repeatCustomers()), detail: 'more than one paid order' },
         { label: 'Settled orders', value: String(this.data.orders().filter(settledOrder).length), detail: 'all-time paid orders' },
-        { label: 'Lifetime value', value: money(lifetimeValue), detail: 'all settled customers' },
+        { label: 'Lifetime value', value: money(lifetimeValue, 2), detail: 'all settled customers' },
       ],
       columns: [
         { label: 'Customer', weight: 1.8 }, { label: 'Email', weight: 2.1 }, { label: 'All orders', weight: .8, align: 'right' },
         { label: 'Paid orders', weight: .8, align: 'right' }, { label: 'Last order', weight: 1.15 }, { label: 'Lifetime value', weight: 1.2, align: 'right' },
       ],
-      rows: customerRows.map((row) => [row.name, row.email, row.orders, row.paidOrders, row.lastOrder, money(row.value)]),
+      rows: customerRows.map((row) => [row.name, row.email, row.orders, row.paidOrders, row.lastOrder, money(row.value, 2)]),
       note: 'Lifetime value includes paid, non-cancelled orders only.',
     };
   }
@@ -310,8 +311,14 @@ export class ReportsPage {
   }
 
   private customerReportRows() {
+    const byCustomer = new Map<string, Order[]>();
+    for (const order of this.data.orders()) {
+      const rows = byCustomer.get(order.user_id) ?? [];
+      rows.push(order);
+      byCustomer.set(order.user_id, rows);
+    }
     return this.data.customers().map((customer) => {
-      const orders = this.data.orders().filter((order) => order.user_id === customer.id);
+      const orders = byCustomer.get(customer.id) ?? [];
       const paid = orders.filter(settledOrder);
       const latest = [...orders].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
       return {
@@ -326,50 +333,11 @@ export class ReportsPage {
   }
 
   private rangeBounds(range: Range) {
-    const end = new Date();
-    const start = new Date(end);
-    if (range === 'week') {
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - 6);
-    } else if (range === 'month') {
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-    } else {
-      start.setMonth(start.getMonth() - (start.getMonth() % 3), 1);
-      start.setHours(0, 0, 0, 0);
-    }
-    const previousStart = new Date(start.getTime() - (end.getTime() - start.getTime()));
-    return { start, end, previousStart };
+    return reportingBounds(range);
   }
 
   private timeSlices(range: Range, start: Date, end: Date): TimeSlice[] {
-    if (range === 'week') {
-      return Array.from({ length: 7 }, (_, index) => {
-        const sliceStart = new Date(start);
-        sliceStart.setDate(start.getDate() + index);
-        const sliceEnd = new Date(sliceStart);
-        sliceEnd.setDate(sliceEnd.getDate() + 1);
-        return { label: sliceStart.toLocaleDateString('en-PH', { weekday: 'short' }).slice(0, 2), start: sliceStart, end: sliceEnd };
-      });
-    }
-    if (range === 'quarter') {
-      return Array.from({ length: 3 }, (_, index) => {
-        const sliceStart = new Date(start.getFullYear(), start.getMonth() + index, 1);
-        const sliceEnd = new Date(start.getFullYear(), start.getMonth() + index + 1, 1);
-        return { label: sliceStart.toLocaleDateString('en-PH', { month: 'short' }), start: sliceStart, end: sliceEnd > end ? new Date(end.getTime() + 1) : sliceEnd };
-      });
-    }
-
-    const slices: TimeSlice[] = [];
-    let cursor = new Date(start);
-    while (cursor <= end) {
-      const sliceStart = new Date(cursor);
-      const sliceEnd = new Date(cursor);
-      sliceEnd.setDate(sliceEnd.getDate() + 7);
-      slices.push({ label: `${sliceStart.getDate()}`, start: sliceStart, end: sliceEnd > end ? new Date(end.getTime() + 1) : sliceEnd });
-      cursor = sliceEnd;
-    }
-    return slices;
+    return reportingSlices(range, start, end);
   }
 
   private ordersBetween(start: Date, end: Date): Order[] {

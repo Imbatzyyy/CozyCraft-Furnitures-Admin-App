@@ -5,7 +5,7 @@ export type NotificationDestinationInput = Partial<Pick<AdminNotification,
     destination?: unknown;
   };
 
-const allowedDestination = /^\/app\/(dashboard|orders|products|categories|inventory|payments|customers|reviews|support|reports|activity|notifications|team|settings|more)(?:[/?#]|$)/;
+const allowedDestination = /^\/app\/(dashboard|orders|products|categories|inventory|payments|customers|member-tiers|experience|content|reviews|support|reports|activity|system-health|notifications|team|settings|more)(?:[/?#]|$)/;
 
 const safeExplicitDestination = (value: unknown) => {
   if (typeof value !== 'string') return '';
@@ -32,8 +32,14 @@ export const adminNotificationDestination = (notification: NotificationDestinati
   const rawId = typeof notification.entity_id === 'string' ? notification.entity_id.trim() : '';
   const id = rawId ? encodeURIComponent(rawId) : '';
 
+  // A return-request ID is not an order ID. Current notifications carry the
+  // parent order, but legacy rows must never navigate to a made-up order.
+  if (entityType === 'return_requests') {
+    return safeExplicitDestination(notification.destination) || safeExplicitDestination(notification.route) || '/app/orders?view=returns';
+  }
+
   if (id) {
-    if (entityType === 'orders' || entityType === 'return_requests' || notification.kind === 'order') {
+    if (entityType === 'orders' || notification.kind === 'order') {
       return `/app/orders/${id}`;
     }
     if (entityType === 'reviews' || notification.kind === 'review') {

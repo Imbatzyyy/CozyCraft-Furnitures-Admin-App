@@ -1,5 +1,12 @@
 import { Order, PaymentTransaction } from '../models/admin.models';
 
+// Shared templates render these for every row. Reuse the expensive Intl
+// instances instead of recreating them on each change-detection pass.
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+const moneyFormats = new Map<number, Intl.NumberFormat>();
+const compactFormat = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', notation: 'compact', maximumFractionDigits: 1 });
+const relativeFormat = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
 /**
  * Converts database timestamps without allowing a browser-specific parser
  * failure to interrupt an Angular render. PostgreSQL normally returns ISO
@@ -32,30 +39,31 @@ export const formatPht = (
   const timestamp = parseTimestamp(value);
   if (!timestamp) return fallback;
   try {
-    return new Intl.DateTimeFormat('en-PH', {
-      timeZone: 'Asia/Manila',
-      ...options,
-    }).format(timestamp);
+    const key = JSON.stringify(options);
+    let formatter = dateFormats.get(key);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', ...options });
+      if (dateFormats.size >= 32) dateFormats.clear();
+      dateFormats.set(key, formatter);
+    }
+    return formatter.format(timestamp);
   } catch {
     return fallback;
   }
 };
 
-export const money = (value: number | string | null | undefined, digits = 0) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(Number(value ?? 0));
+export const money = (value: number | string | null | undefined, digits = 0) => {
+  const precision = Math.min(20, Math.max(0, Math.trunc(digits) || 0));
+  let formatter = moneyFormats.get(precision);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: precision, maximumFractionDigits: precision });
+    moneyFormats.set(precision, formatter);
+  }
+  return formatter.format(Number(value ?? 0));
+};
 
 export const compactMoney = (value: number | string | null | undefined) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(Number(value ?? 0));
+  compactFormat.format(Number(value ?? 0));
 
 export const dateTime = (value: string | null | undefined) => formatPht(value, {
   dateStyle: 'medium',
@@ -72,7 +80,7 @@ export const timeAgo = (value: string | null | undefined) => {
   const timestamp = parseTimestamp(value);
   if (!timestamp) return 'Just now';
   const difference = Date.now() - timestamp.getTime();
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const formatter = relativeFormat;
   if (difference < 60_000) return 'Just now';
   if (difference < 3_600_000) return formatter.format(-Math.round(difference / 60_000), 'minute');
   if (difference < 86_400_000) return formatter.format(-Math.round(difference / 3_600_000), 'hour');
@@ -92,13 +100,16 @@ export const initials = (value: string | null | undefined) => (value || 'CozyCra
   .join('')
   .toUpperCase();
 
+const settledPaymentStates = new Set(['paid', 'refunded']);
+const paymentTimestamp = (payment: PaymentTransaction) =>
+  parseTimestamp(payment.updated_at)?.getTime()
+  ?? parseTimestamp(payment.paid_at)?.getTime()
+  ?? parseTimestamp(payment.created_at)?.getTime() ?? 0;
+
 export const currentPayment = (order: Order): PaymentTransaction | undefined =>
   [...(order.payment_transactions ?? [])].sort((left, right) => {
-    const settled = new Set(['paid', 'refunded']);
-    const priority = Number(settled.has(right.status)) - Number(settled.has(left.status));
-    return priority
-      || (parseTimestamp(right.updated_at)?.getTime() ?? 0)
-      - (parseTimestamp(left.updated_at)?.getTime() ?? 0);
+    const priority = Number(settledPaymentStates.has(right.status)) - Number(settledPaymentStates.has(left.status));
+    return priority || paymentTimestamp(right) - paymentTimestamp(left);
   })[0];
 
 export const settledOrder = (order: Pick<Order, 'payment_status' | 'status'>) =>

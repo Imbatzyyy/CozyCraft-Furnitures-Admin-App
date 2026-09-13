@@ -25,6 +25,7 @@ const tierOrder: LoyaltyTier[] = ['member', 'plus', 'premium', 'elite'];
 @Component({
   selector: 'cc-member-tiers-page',
   standalone: true,
+  providers: [MemberTiersService],
   imports: [IonContent, IonIcon, IonModal, IonSearchbar, IonSelect, IonSelectOption, IonSpinner, EmptyStateComponent, SkeletonListComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

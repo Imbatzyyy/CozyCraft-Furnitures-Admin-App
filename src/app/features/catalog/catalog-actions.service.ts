@@ -57,7 +57,6 @@ export class CatalogActionsService {
       category: product.category.trim(),
       subcategory: product.subcategory.trim(),
       price: Number(product.price),
-      stock_quantity: Math.trunc(Number(product.stock_quantity)),
       status: product.status,
       color: product.color.trim(),
       material: product.material,
@@ -68,7 +67,7 @@ export class CatalogActionsService {
     };
 
     const request = create
-      ? this.client.from('products').insert({ id: product.id, ...payload })
+      ? this.client.from('products').insert({ id: product.id, ...payload, stock_quantity: Math.trunc(Number(product.stock_quantity)) })
       : this.client.from('products').update(payload).eq('id', product.id);
     const { data, error } = await request
       .select('id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at,updated_at')
@@ -211,12 +210,14 @@ export class CatalogActionsService {
       .update({ category: cleanName })
       .eq('category', category.name);
     if (productUpdate.error) {
-      await this.client
+      const rollback = await this.client
         .from('categories')
         .update({ name: category.name, slug: category.slug })
         .eq('id', category.id);
       await this.refreshWorkspace(this.workspace.loadCategories());
-      return { error: `Products could not be reassigned, so the category rename was rolled back. ${productUpdate.error.message}` };
+      return { error: rollback.error
+        ? 'The category rename was only partially completed and rollback could not be confirmed. Refresh categories and products before retrying.'
+        : `Products could not be reassigned, so the category rename was rolled back. ${productUpdate.error.message}` };
     }
 
     await this.refreshWorkspace(this.workspace.loadCategories(), this.workspace.loadProducts());
@@ -340,7 +341,7 @@ export class CatalogActionsService {
   }
 
   private async refreshWorkspace(...tasks: Array<Promise<void>>) {
-    await Promise.allSettled(tasks);
+    await this.workspace.reconcileAfterWrite(tasks.map((task) => () => task));
   }
 
   private catalogError(message: string) {

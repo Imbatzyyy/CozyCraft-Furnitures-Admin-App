@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AlertController, IonBackButton, IonButton, IonIcon, IonModal, IonSelect, IonSelectOption, IonTextarea } from '@ionic/angular/standalone';
@@ -10,6 +10,7 @@ import { OrderStatus, ReturnStatus } from '../../core/models/admin.models';
 import { allowedFulfillmentStatuses, allowedReturnStatuses, canManageFinancials } from '../../core/utils/admin-permissions';
 import { currentPayment, dateTime, formatPht, money, parseTimestamp, titleCase } from '../../core/utils/format';
 import { NativePlatformService } from '../../core/native/native-platform.service';
+import { ExportService } from '../../core/native/export.service';
 import { CozyToastService } from '../../shared/components/toast.service';
 import { SkeletonListComponent } from '../../shared/components/skeleton-list.component';
 import { StatusPillComponent } from '../../shared/components/status-pill.component';
@@ -90,6 +91,27 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
           }
         </section>
 
+        @if (current.status !== 'cancelled' && current.cancellation_status !== 'pending') {
+          <section class="order-receipt cc-card" aria-labelledby="order-packing-title">
+            <span class="order-receipt__icon"><ion-icon name="document-text-outline" aria-hidden="true"></ion-icon></span>
+            <div class="order-receipt__copy"><h2 id="order-packing-title">Packing list</h2><p>Items, quantities & delivery checklist</p></div>
+            <button type="button" class="order-receipt__download" [disabled]="receiptBusy()" (click)="downloadPackingList()"><ion-icon name="download-outline" aria-hidden="true"></ion-icon><span>{{ receiptBusy() ? 'Preparing…' : 'Download PDF' }}</span></button>
+          </section>
+        }
+        @if (current.status === 'delivered') {
+          <section class="order-receipt cc-card" aria-labelledby="order-receipt-title">
+            <span class="order-receipt__icon"><ion-icon name="document-text-outline" aria-hidden="true"></ion-icon></span>
+            <div class="order-receipt__copy">
+              <h2 id="order-receipt-title">Delivery receipt</h2>
+              <p>Itemized invoice · PDF</p>
+            </div>
+            <button type="button" class="order-receipt__download" [disabled]="receiptBusy()" [attr.aria-busy]="receiptBusy()" (click)="downloadReceipt()">
+              <ion-icon [name]="receiptBusy() ? 'hourglass-outline' : 'download-outline'" aria-hidden="true"></ion-icon>
+              <span aria-live="polite">{{ receiptBusy() ? 'Preparing…' : 'Download PDF' }}</span>
+            </button>
+          </section>
+        }
+
         <div class="order-detail-grid">
           <section class="cc-card detail-card">
             <div class="cc-section-head"><div><p class="cc-eyebrow">ORDERED PIECES</p><h2>{{ current.order_items.length }} line{{ current.order_items.length === 1 ? '' : 's' }}</h2></div></div>
@@ -148,7 +170,8 @@ import { StatusPillComponent } from '../../shared/components/status-pill.compone
   styleUrl: './orders.scss',
 })
 export class OrderDetailPage {
-  readonly money = money;
+  readonly money = (amount: number) => money(amount, 2);
+  private readonly destroyRef = inject(DestroyRef);
   readonly dateTime = dateTime;
   readonly titleCase = titleCase;
   readonly fulfillmentSteps: OrderStatus[] = ['pending', 'processing', 'packed', 'shipped', 'delivered'];
@@ -176,6 +199,8 @@ export class OrderDetailPage {
   readonly cancellationReason = signal('');
   readonly returnNote = signal('');
   readonly working = signal(false);
+  readonly receiptBusy = signal(false);
+  private receiptSequence = 0;
   readonly detailLoading = signal(true);
   readonly detailError = signal('');
   private readonly detailResolvedId = signal('');
@@ -196,6 +221,7 @@ export class OrderDetailPage {
     private readonly alerts: AlertController,
     private readonly toast: CozyToastService,
     private readonly native: NativePlatformService,
+    private readonly exports: ExportService,
   ) {
     effect(() => {
       const id = this.orderId();
@@ -218,6 +244,56 @@ export class OrderDetailPage {
 
   ionViewWillEnter() {
     if (this.data.initialized()) void this.reloadOrder();
+  }
+
+  ionViewWillLeave() {
+    // Ionic retains this page. Never open a late share sheet over another order.
+    this.receiptSequence += 1;
+  }
+
+  async downloadReceipt() {
+    const current = this.order();
+    if (!current || current.status !== 'delivered' || this.receiptBusy() || !this.auth.signedIn()) return;
+    const sequence = ++this.receiptSequence;
+    const userId = this.auth.userId();
+    const isCurrent = () => !this.destroyRef.destroyed && sequence === this.receiptSequence
+      && this.orderId() === current.id && this.auth.signedIn() && this.auth.userId() === userId;
+    this.receiptBusy.set(true);
+    try {
+      // Refresh only this order, then read one billing row. No bulk refresh or upload.
+      const order = await this.data.loadOrderDetail(current.id);
+      if (!isCurrent()) return;
+      if (!order) throw new Error('This order is no longer available to this administrator.');
+      if (order.status !== 'delivered') throw new Error('Receipts are available after the order is delivered.');
+      const billing = await this.data.loadReceiptBillingProfile(order.user_id);
+      if (!isCurrent()) return;
+      const result = await this.exports.orderReceipt({ order, billing, store: this.data.settings() }, isCurrent);
+      if (result === 'downloaded' && isCurrent()) await this.toast.show('Receipt PDF download started.', 'success');
+    } catch (error) {
+      if (!isCurrent()) return;
+      await this.toast.show(error instanceof Error ? error.message : 'The receipt could not be downloaded. Check your connection and try again.', 'danger');
+    } finally {
+      this.receiptBusy.set(false);
+    }
+  }
+
+  async downloadPackingList() {
+    const current = this.order();
+    if (!current || this.receiptBusy() || !this.auth.signedIn()) return;
+    const sequence = ++this.receiptSequence;
+    const userId = this.auth.userId();
+    const isCurrent = () => !this.destroyRef.destroyed && sequence === this.receiptSequence && this.orderId() === current.id && this.auth.signedIn() && this.auth.userId() === userId;
+    this.receiptBusy.set(true);
+    try {
+      const order = await this.data.loadOrderDetail(current.id);
+      if (!isCurrent()) return;
+      if (!order) throw new Error('This order is no longer available.');
+      const { packingListReport } = await import('../../core/native/packing-list');
+      const error = await this.exports.premiumPdf(packingListReport(order), isCurrent);
+      if (error && isCurrent()) throw new Error(error);
+    } catch (error) {
+      if (isCurrent()) await this.toast.show(error instanceof Error ? error.message : 'The packing list could not be exported.', 'danger');
+    } finally { this.receiptBusy.set(false); }
   }
 
   async reloadOrder(id = this.orderId()) {

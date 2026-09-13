@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { AlertController, IonIcon, IonSpinner, IonToggle } from '@ionic/angular/standalone';
 import { NativePlatformService } from '../../core/native/native-platform.service';
+import { AdminAuthService } from '../../core/auth/admin-auth.service';
 import { dateTime, money, titleCase } from '../../core/utils/format';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
 import { CozyToastService } from '../../shared/components/toast.service';
@@ -36,6 +37,7 @@ const blankNewsletter = (): NewsletterDraft => ({
   styleUrl: './content-studio.page.scss',
 })
 export class ContentStudioPage {
+  private readonly auth = inject(AdminAuthService);
   protected readonly service = inject(ContentStudioService);
   private readonly toast = inject(CozyToastService);
   private readonly native = inject(NativePlatformService);
@@ -373,7 +375,7 @@ export class ContentStudioPage {
 
   private restoreNewsletterDraft(): NewsletterDraft {
     try {
-      const value = JSON.parse(localStorage.getItem('cozycraft:admin-mobile:newsletter-draft:v1') ?? 'null') as Partial<NewsletterDraft> | null;
+      const value = JSON.parse(localStorage.getItem(this.newsletterDraftKey()) ?? 'null') as Partial<NewsletterDraft> | null;
       if (!value || typeof value.subject !== 'string' || typeof value.body !== 'string' || !Array.isArray(value.product_ids)) return blankNewsletter();
       return { ...blankNewsletter(), ...value, product_ids: value.product_ids.filter((id): id is string => typeof id === 'string').slice(0, 4) };
     } catch {
@@ -383,15 +385,17 @@ export class ContentStudioPage {
 
   private persistNewsletterDraft() {
     try {
-      localStorage.setItem('cozycraft:admin-mobile:newsletter-draft:v1', JSON.stringify(this.newsletterDraft()));
+      localStorage.setItem(this.newsletterDraftKey(), JSON.stringify(this.newsletterDraft()));
     } catch {
       // A hardened WebView may disable local drafts. The protected database save still works.
     }
   }
 
   private clearNewsletterDraft() {
-    try { localStorage.removeItem('cozycraft:admin-mobile:newsletter-draft:v1'); } catch { /* no-op */ }
+    try { localStorage.removeItem(this.newsletterDraftKey()); } catch { /* no-op */ }
   }
+
+  private newsletterDraftKey() { return `cozycraft:admin-mobile:newsletter-draft:v2:${this.auth.userId()}`; }
 
   private errorMessage(error: unknown) {
     if (error instanceof Error) return error.message;

@@ -341,6 +341,7 @@ export class StoreSettingsPage {
     if (this.checking()) return;
     this.checking.set(true);
     this.notice.set(null);
+    try {
     const result = await this.actions.testConnection();
     this.checking.set(false);
     if (result.error) {
@@ -353,11 +354,15 @@ export class StoreSettingsPage {
       tone: 'success',
     });
     await this.native.success();
+    } catch {
+      this.notice.set({ message: 'The connection check could not complete. Reconnect and try again.', tone: 'danger' });
+    } finally { this.checking.set(false); }
   }
 
   async registerPush() {
     if (this.pushWorking()) return;
     this.pushWorking.set(true);
+    try {
     const message = await this.native.registerPushNotifications();
     this.pushWorking.set(false);
     if (message) {
@@ -369,16 +374,23 @@ export class StoreSettingsPage {
     this.notice.set({ message: successMessage, tone: 'success' });
     await this.toast.show(successMessage, 'success');
     await this.native.success();
+    } catch {
+      this.notice.set({ message: 'Notification registration could not complete. Check the device permission and try again.', tone: 'danger' });
+    } finally { this.pushWorking.set(false); }
   }
 
   async unregisterPush() {
     if (this.pushWorking()) return;
     this.pushWorking.set(true);
+    try {
     const message = await this.native.unregisterPushNotifications();
     this.pushWorking.set(false);
     this.notice.set({ message: message ?? 'Push alerts were removed from this device.', tone: message ? 'warning' : 'success' });
     await this.toast.show(message ?? 'Push alerts removed from this device.', message ? 'neutral' : 'success');
     await this.native.tap();
+    } catch {
+      this.notice.set({ message: 'Notification removal could not be confirmed. Reconnect and retry.', tone: 'danger' });
+    } finally { this.pushWorking.set(false); }
   }
 
   updatedLabel(value: string | null) {

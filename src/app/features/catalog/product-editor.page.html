@@ -70,9 +70,9 @@
               <input class="cc-input" [(ngModel)]="draft.price" type="number" inputmode="decimal" min="0" step="0.01" />
             </label>
             <label class="cc-field">
-              <span>Opening stock</span>
-              <input class="cc-input" [(ngModel)]="draft.stock_quantity" type="number" inputmode="numeric" min="0" step="1" />
-              <small>Use Inventory for reasoned stock counts after setup.</small>
+              <span>{{ isNew() ? 'Opening stock' : 'Stock at last load' }}</span>
+              <input class="cc-input" [(ngModel)]="draft.stock_quantity" [readonly]="!isNew()" type="number" inputmode="numeric" min="0" step="1" />
+              <small>{{ isNew() ? 'Set the initial quantity. Later changes are recorded in Inventory.' : 'Use Inventory to adjust stock with a reason. Saving this product will not overwrite live stock.' }}</small>
             </label>
             <label class="cc-field editor-span-2">
               <span>Color / finish name</span>

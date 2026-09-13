@@ -110,6 +110,8 @@ export class MerchandisingService {
 
   async saveArea(area: DeliveryServiceArea) {
     if (!area.name.trim()) return 'Give the delivery area a name.';
+    if (!Number.isFinite(area.delivery_fee) || (area.free_delivery_minimum !== null && !Number.isFinite(area.free_delivery_minimum))) return 'Enter valid delivery amounts.';
+    if (!Number.isInteger(area.lead_time_min_days) || !Number.isInteger(area.lead_time_max_days)) return 'Delivery days must be whole numbers.';
     if (area.delivery_fee < 0 || (area.free_delivery_minimum !== null && area.free_delivery_minimum < 0)) return 'Delivery amounts cannot be negative.';
     if (area.lead_time_min_days < 0 || area.lead_time_max_days < area.lead_time_min_days || area.lead_time_max_days > 90) return 'Check the delivery-day range.';
     const { data, error } = await this.client

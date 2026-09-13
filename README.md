@@ -34,6 +34,10 @@ The prebuild script generates `src/environments/environment.generated.ts`. Local
 | `npm run typecheck` | Run Angular and TypeScript checks |
 | `npm run build:production` | Create an optimized web build |
 | `npm run verify` | Type-check and create a production build |
+| `npm run test:receipts` | Test delivered-order receipts and generate synthetic PDF fixtures |
+| `npm run test:audit` | Run offline reliability, pagination, routing, permission and data regressions |
+| `npm run test:exports` | Validate packing lists and lossless multi-page report exports |
+| `npm run audit:ui` | Build and serve the synthetic, local-only mobile UI fixture |
 | `npm run cap:sync` | Build and synchronize Android/iOS projects |
 | `npm run android` | Synchronize and open the Android project |
 | `npm run ios` | Synchronize and open the iOS project |
@@ -93,6 +97,34 @@ For reliable delivery after iOS fully suspends or terminates the application, se
 
 The workaround is intentionally narrow: it asks Apple Clang to remove the verbose `-v` argument that causes Xcode's `-E -dM /dev/null` compiler metadata probe to exceed the build service's output pipe and stall during pre-planning. The app continues to use Xcode's standard Apple Clang toolchain, SDKs, compiler arguments, linker, and signing flow.
 
+## Order receipts
+
+Eligible order details also offer a **Packing list** PDF: delivery instructions, SKU/quantity
+checklist and packing/release fields. It uses one fresh order snapshot and does not upload the PDF.
+Cancelled orders and orders awaiting a cancellation decision cannot generate a packing checklist.
+
+Open a delivered order and tap **Download PDF** in the Delivery receipt card. Android and iOS
+open the system save/share sheet; the browser downloads the PDF directly. Dismissing the share
+sheet is not reported as an error or as a completed save.
+
+Receipts use saved order prices, discounts, delivery fees, payment references, and delivery-history
+timestamps in Philippine time. Payment status is preserved: delivery alone does not confirm COD
+collection. Billing details are read under the existing customer/admin policies; if no readable
+billing profile exists, the order's delivery details are used. A failed billing request blocks the
+export and allows retry rather than silently exporting incomplete information.
+
+Each tap refreshes only that order and reads one billing profile. PDF generation and bundled fonts
+stay on the device; receipts are not uploaded or subscribed to. Native PDFs are staged in the app's
+cache for sharing. PDFs contain customer information and should only be shared with an appropriate recipient.
+
+The official receipt logo is bundled at `src/assets/branding/cozycraft-receipt-logo.png`, copied
+unchanged from the website's optimized `public/email-logo.png`. It is embedded once and reused in
+each page header with its original proportions. No logo download from the website is required.
+
+Run `npm run test:receipts` for eligibility, totals, discounts, billing fallback, payment states,
+embedded relations, and pagination checks. Synthetic layout fixtures are written to ignored `tmp/pdfs/`.
+Before a release, verify Save to Files on iOS and the available save/share destinations on Android.
+
 ## Native alert delivery
 
 The installed app performs the complete client registration sequence: permission check, operating-system token registration, authenticated token persistence, foreground presentation, deep-link handling, removal, and startup verification. Provider credentials remain outside the application bundle.
@@ -107,6 +139,13 @@ The server-side `dispatch-admin-push` Edge Function requires these Supabase secr
 Do not place private server credentials in `.env.local`, `google-services.json`, the Angular bundle, or the Git repository.
 
 ## Development conventions
+
+See [1.0.1 release notes](docs/RELEASE_v1.0.1.md) for the mobile preview scope,
+validation results and signed-device distribution checklist.
+
+See [the September 2026 mobile audit](docs/ADMIN_APP_AUDIT_2026-09-13.md) for the
+route-by-route coverage, implemented fixes, test evidence, and remaining release gates.
+In particular, compact UI pagination does not yet replace the full historical startup snapshot.
 
 - Keep route-level behavior in its feature directory.
 - Put application-wide state, authorization, data access, or native integrations in `core`.

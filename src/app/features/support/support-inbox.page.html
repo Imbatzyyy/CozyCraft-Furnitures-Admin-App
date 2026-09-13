@@ -109,7 +109,7 @@
       ></cc-empty-state>
     </section>
   } @else {
-    <section class="ticket-list" aria-label="Support conversations">
+    <section class="ticket-list" aria-label="Support conversations" data-page-list>
       @for (ticket of displayedTickets(); track ticket.id) {
         <button
           class="ticket-card cc-reveal"
@@ -155,11 +155,6 @@
       }
     </section>
 
-    @if (remainingTickets() > 0) {
-      <button type="button" class="show-more-tickets" (click)="showMore()">
-        <span><strong>Show more conversations</strong><small>{{ remainingTickets() }} remaining</small></span>
-        <ion-icon name="chevron-down-outline"></ion-icon>
-      </button>
-    }
+    <cc-pagination [page]="pagination.page()" [pageSize]="pagination.pageSize" [total]="filteredTickets().length" (pageChange)="pagination.select($event)" label="Inbox pages" />
   }
 </main>

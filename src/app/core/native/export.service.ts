@@ -3,6 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import type { PDFFont, PDFPage } from 'pdf-lib';
+import type { OrderReceiptInput } from './order-receipt';
+import { csvCell } from '../utils/csv';
 
 export type CsvCell = string | number | boolean | null | undefined;
 
@@ -32,16 +34,52 @@ export interface PremiumReport {
 
 @Injectable({ providedIn: 'root' })
 export class ExportService {
+  async orderReceipt(input: OrderReceiptInput, isCurrent: () => boolean): Promise<'shared' | 'downloaded' | 'cancelled'> {
+    const [{ createOrderReceiptPdf }, body, strong, display, logo] = await Promise.all([
+      import('./order-receipt'),
+      this.fontAsset('assets/fonts/dm-sans-400.ttf'),
+      this.fontAsset('assets/fonts/dm-sans-700.ttf'),
+      this.fontAsset('assets/fonts/dm-serif-display-400.ttf'),
+      this.receiptLogoAsset(),
+    ]);
+    if (!isCurrent()) return 'cancelled';
+    const receipt = await createOrderReceiptPdf(input, { body, strong, display }, logo);
+    if (!isCurrent()) return 'cancelled';
+    if (!Capacitor.isNativePlatform()) {
+      this.download(receipt.filename, new Blob([receipt.bytes as BlobPart], { type: 'application/pdf' }));
+      return 'downloaded';
+    }
+    const file = await Filesystem.writeFile({
+      path: 'exports/' + receipt.filename,
+      data: this.toBase64(receipt.bytes),
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    if (!isCurrent()) return 'cancelled';
+    try {
+      await Share.share({
+        title: 'Receipt ' + input.order.order_number,
+        dialogTitle: 'Save or share receipt PDF',
+        files: [file.uri],
+      });
+      return 'shared';
+    } catch (error) {
+      // Both native Share plugins reject when the user dismisses the sheet.
+      if ((error as { message?: string })?.message === 'Share canceled') return 'cancelled';
+      throw error;
+    }
+  }
+
   async csv(filename: string, rows: CsvCell[][]): Promise<string | null> {
     const safeName = this.safeFilename(filename, 'csv');
     const csv = `\uFEFF${rows
-      .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map(csvCell).join(','))
       .join('\r\n')}`;
 
     return this.shareText(safeName, csv, 'text/csv;charset=utf-8');
   }
 
-  async premiumPdf(report: PremiumReport): Promise<string | null> {
+  async premiumPdf(report: PremiumReport, isCurrent: () => boolean = () => true): Promise<string | null> {
     try {
       const [{ PDFDocument, rgb }, fontkitModule] = await Promise.all([
         import('pdf-lib'),
@@ -82,7 +120,6 @@ export class ExportService {
       const tableWidth = pageSize[0] - margin * 2;
       const totalWeight = report.columns.reduce((sum, column) => sum + column.weight, 0);
       const columnWidths = report.columns.map((column) => tableWidth * column.weight / totalWeight);
-      const rowHeight = 24;
       const tableHeaderHeight = 27;
       const bottomLimit = 39;
       const pages: PDFPage[] = [];
@@ -146,11 +183,11 @@ export class ExportService {
       drawBrandHeader(page, true);
       drawKpis(page);
       let cursor = drawTableHeader(page, pageSize[1] - 232);
-      const firstPageCapacity = Math.max(1, Math.floor((cursor - bottomLimit) / rowHeight));
-      const continuationCursor = pageSize[1] - 83 - tableHeaderHeight;
-      const continuationCapacity = Math.max(1, Math.floor((continuationCursor - bottomLimit) / rowHeight));
-      let rowsOnPage = 0;
-      let currentPageCapacity = firstPageCapacity;
+      const nextPage = () => {
+        page = document.addPage(pageSize); pages.push(page);
+        drawBrandHeader(page, false);
+        cursor = drawTableHeader(page, pageSize[1] - 83);
+      };
 
       if (!report.rows.length) {
         page.drawRectangle({ x: margin, y: cursor - 54, width: tableWidth, height: 54, color: palette.surface });
@@ -158,35 +195,35 @@ export class ExportService {
       }
 
       report.rows.forEach((row, rowIndex) => {
-        if (rowsOnPage >= currentPageCapacity) {
-          page = document.addPage(pageSize);
-          pages.push(page);
-          drawBrandHeader(page, false);
-          cursor = drawTableHeader(page, pageSize[1] - 83);
-          rowsOnPage = 0;
-          const remainingRows = report.rows.length - rowIndex;
-          const remainingPages = Math.max(1, Math.ceil(remainingRows / continuationCapacity));
-          currentPageCapacity = Math.ceil(remainingRows / remainingPages);
-        }
-
+        const cells = report.columns.map((_, index) => this.wrapText(String(row[index] ?? '—'), body, 8.2, columnWidths[index] - 16));
+        const lineCount = Math.max(1, ...cells.map(lines => lines.length));
+        let firstLine = 0;
+        while (firstLine < lineCount) {
+        const requiredHeight = Math.max(24, (lineCount - firstLine) * 11 + 12);
+        if (cursor - bottomLimit < 24 || (firstLine === 0 && requiredHeight > cursor - bottomLimit && requiredHeight < pageSize[1] - 83 - tableHeaderHeight - bottomLimit)) nextPage();
+        const linesToDraw = Math.min(lineCount - firstLine, Math.max(1, Math.floor((cursor - bottomLimit - 12) / 11)));
+        const rowHeight = Math.max(24, linesToDraw * 11 + 12);
         page.drawRectangle({ x: margin, y: cursor - rowHeight, width: tableWidth, height: rowHeight, color: rowIndex % 2 ? palette.surface : palette.canvas });
         page.drawLine({ start: { x: margin, y: cursor - rowHeight }, end: { x: margin + tableWidth, y: cursor - rowHeight }, thickness: 0.4, color: palette.border });
         let x = margin;
         report.columns.forEach((column, columnIndex) => {
           const width = columnWidths[columnIndex];
-          const value = this.fitText(String(row[columnIndex] ?? '—'), body, 8.2, width - 16);
+          cells[columnIndex].slice(firstLine, firstLine + linesToDraw).forEach((value, lineIndex) => {
           const valueWidth = body.widthOfTextAtSize(value, 8.2);
           page.drawText(value, {
             x: column.align === 'right' ? x + width - valueWidth - 8 : x + 8,
-            y: cursor - 15.5,
+            y: cursor - 15.5 - lineIndex * 11,
             size: 8.2,
             font: body,
             color: palette.ink,
           });
+          });
           x += width;
         });
         cursor -= rowHeight;
-        rowsOnPage += 1;
+        firstLine += linesToDraw;
+        if (firstLine < lineCount) nextPage();
+        }
       });
 
       pages.forEach((target, index) => {
@@ -195,15 +232,22 @@ export class ExportService {
         const pageNumber = `${index + 1} / ${pages.length}`;
         target.drawText(pageNumber, { x: width - margin - body.widthOfTextAtSize(pageNumber, 7.2), y: 18, size: 7.2, font: body, color: palette.soft });
         if (report.note && index === pages.length - 1) {
-          target.drawText(this.fitText(report.note, body, 7.2, tableWidth - 190), { x: margin + 275, y: 18, size: 7.2, font: body, color: palette.soft });
+          target.drawText(this.fitText(report.note, body, 7.2, tableWidth - 90), { x: margin, y: 29, size: 7.2, font: body, color: palette.soft });
         }
       });
 
       const bytes = await document.save();
-      return this.shareBytes(this.safeFilename(report.filename, 'pdf'), bytes, 'application/pdf');
+      if (!isCurrent()) return null;
+      return this.shareBytes(this.safeFilename(report.filename, 'pdf'), bytes, 'application/pdf', isCurrent);
     } catch (error) {
       return error instanceof Error ? error.message : 'The PDF report could not be exported.';
     }
+  }
+
+  private async receiptLogoAsset(): Promise<ArrayBuffer> {
+    const response = await fetch(new URL('assets/branding/cozycraft-receipt-logo.png', document.baseURI));
+    if (!response.ok) throw new Error('The official receipt logo could not be loaded. Please try again.');
+    return response.arrayBuffer();
   }
 
   private async fontAsset(path: string): Promise<ArrayBuffer> {
@@ -221,6 +265,23 @@ export class ExportService {
     return `${result}${suffix}`;
   }
 
+  private wrapText(value: string, font: PDFFont, size: number, maxWidth: number): string[] {
+    const lines: string[] = [];
+    let line = '';
+    for (const word of value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/₱/g, 'PHP ').split(/\s+/)) {
+      if (!word) continue;
+      const candidate = line ? line + ' ' + word : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) { line = candidate; continue; }
+      if (line) { lines.push(line); line = ''; }
+      for (const character of word) {
+        if (line && font.widthOfTextAtSize(line + character, size) > maxWidth) { lines.push(line); line = ''; }
+        line += character;
+      }
+    }
+    if (line || !lines.length) lines.push(line);
+    return lines;
+  }
+
   private async shareText(filename: string, data: string, mimeType: string): Promise<string | null> {
     try {
       if (Capacitor.isNativePlatform()) {
@@ -236,9 +297,10 @@ export class ExportService {
     }
   }
 
-  private async shareBytes(filename: string, data: Uint8Array, mimeType: string): Promise<string | null> {
+  private async shareBytes(filename: string, data: Uint8Array, mimeType: string, isCurrent: () => boolean = () => true): Promise<string | null> {
     if (Capacitor.isNativePlatform()) {
       const file = await Filesystem.writeFile({ path: `exports/${filename}`, data: this.toBase64(data), directory: Directory.Cache, recursive: true });
+      if (!isCurrent()) return null;
       await this.openShareSheet(file.uri);
       return null;
     }
@@ -260,7 +322,8 @@ export class ExportService {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    // Give the browser time to start reading the PDF before releasing its URL.
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
   private toBase64(bytes: Uint8Array): string {

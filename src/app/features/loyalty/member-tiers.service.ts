@@ -70,6 +70,7 @@ export class MemberTiersService {
   private readonly avatarCache = new Map<string, { url: string; expiresAt: number }>();
   private lastRequestKey = '';
   private lastLoadedAt = 0;
+  private pageSequence = 0;
 
   readonly members = signal<LoyaltyMember[]>([]);
   readonly total = signal(0);
@@ -89,9 +90,13 @@ export class MemberTiersService {
   constructor(private readonly connection: SupabaseAdminService) {}
 
   async loadPage(request: LoyaltyPageRequest, force = false) {
+    const sequence = ++this.pageSequence;
     const normalized = { ...request, query: request.query.trim() };
     const requestKey = JSON.stringify(normalized);
-    if (!force && requestKey === this.lastRequestKey && Date.now() - this.lastLoadedAt < 30_000) return;
+    if (!force && requestKey === this.lastRequestKey && Date.now() - this.lastLoadedAt < 30_000) {
+      this.loading.set(false);
+      return;
+    }
 
     this.loading.set(true);
     try {
@@ -111,6 +116,7 @@ export class MemberTiersService {
           .or(`full_name.ilike.${pattern},username.ilike.${pattern},email.ilike.${pattern}`)
           .limit(120);
         if (profileError) throw profileError;
+        if (sequence !== this.pageSequence) return;
         matchingIds = (matches ?? []).map((item) => String(item.id));
         if (!matchingIds.length) {
           this.members.set([]);
@@ -131,18 +137,21 @@ export class MemberTiersService {
         .from('mobile_loyalty_accounts')
         .select('user_id,points_balance,lifetime_eligible_spend,tier,tier_valid_until,last_activity_at,updated_at', { count: 'exact' })
         .order(orderColumn, { ascending: false })
+        .order('user_id')
         .range(first, first + normalized.pageSize - 1);
       if (normalized.tier !== 'all') accountsQuery = accountsQuery.eq('tier', normalized.tier);
       if (matchingIds) accountsQuery = accountsQuery.in('user_id', matchingIds);
 
       const { data: accountData, error: accountError, count } = await accountsQuery;
       if (accountError) throw accountError;
+      if (sequence !== this.pageSequence) return;
       const accounts = (accountData ?? []) as LoyaltyAccountRow[];
       const ids = accounts.map((item) => item.user_id);
       const profiles = ids.length
         ? await this.loadProfiles(ids)
         : [];
       const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+      if (sequence !== this.pageSequence) return;
 
       this.members.set(accounts.map((account) => {
         const profile = profileById.get(account.user_id);
@@ -160,7 +169,7 @@ export class MemberTiersService {
       this.lastRequestKey = requestKey;
       this.lastLoadedAt = Date.now();
     } finally {
-      this.loading.set(false);
+      if (sequence === this.pageSequence) this.loading.set(false);
     }
   }
 
@@ -193,6 +202,7 @@ export class MemberTiersService {
         .select('id,kind,points,description,created_at,expires_at', { count: 'exact' })
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(first, first + pageSize - 1);
       if (error) throw error;
       if (sequence !== this.transactionSequence || this.activeHistoryUserId !== userId) return;
@@ -216,6 +226,7 @@ export class MemberTiersService {
         .select('id,points_cost,discount_amount,status,code,created_at,expires_at,used_at', { count: 'exact' })
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(first, first + pageSize - 1);
       if (error) throw error;
       if (sequence !== this.redemptionSequence || this.activeHistoryUserId !== userId) return;

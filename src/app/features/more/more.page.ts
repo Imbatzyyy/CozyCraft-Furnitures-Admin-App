@@ -98,6 +98,7 @@ export class MorePage {
     { label: 'FINANCE & INSIGHT', items: [
       { label: 'Payments', detail: 'Reconcile COD and PayMongo', icon: 'card-outline', route: '/app/payments', badge: () => 0 },
       { label: 'Reports', detail: 'Sales and inventory exports', icon: 'analytics-outline', route: '/app/reports', badge: () => 0 },
+      { label: 'System health', detail: 'Sync and operational exceptions', icon: 'pulse-outline', route: '/app/system-health', badge: () => 0 },
       { label: 'Activity', detail: 'Audit people and systems', icon: 'pulse-outline', route: '/app/activity', badge: () => this.data.clientErrors().length },
     ]},
     { label: 'WORKSPACE CONTROL', items: [

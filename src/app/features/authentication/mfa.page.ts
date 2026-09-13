@@ -74,19 +74,23 @@ export class MfaPage implements OnInit {
 
   private async prepareEnrollment() {
     this.loading.set(true);
+    try {
     const result = await this.auth.beginTotpEnrollment();
-    this.loading.set(false);
     this.enrollment.set(result.enrollment);
     if (result.error) this.error.set(result.error);
+    } catch {
+      this.error.set('Authenticator setup could not connect. Check your connection and reopen this screen.');
+    } finally { this.loading.set(false); }
   }
 
   async verify() {
     if (this.code.invalid || this.loading()) return;
     this.loading.set(true);
+    this.error.set('');
+    try {
     const error = this.enrollment()
       ? await this.auth.verifyTotpEnrollment(this.enrollment()!.id, this.code.value)
       : await this.auth.verifyMfa(this.code.value);
-    this.loading.set(false);
     if (error) {
       this.error.set(error);
       this.code.setValue('');
@@ -94,6 +98,9 @@ export class MfaPage implements OnInit {
     }
     const returnUrl = safeAdminReturnUrl(this.auth.role(), this.route.snapshot.queryParamMap.get('returnUrl'));
     await this.router.navigateByUrl(returnUrl, { replaceUrl: true });
+    } catch {
+      this.error.set('Verification could not connect. Check your connection and try again with a current code.');
+    } finally { this.loading.set(false); }
   }
 
   async signOut() {
